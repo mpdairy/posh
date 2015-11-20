@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "1.7.170"]
                  [reagent "0.5.1"]
-                 [figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
+                 ;;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
                  [datascript "0.13.3"]]
   :plugins [[lein-cljsbuild "1.1.1"]]
   :cljsbuild {
@@ -18,4 +18,5 @@
                                     :output-to "resources/public/js/main.js"
                                     :output-dir "resources/public/js"} } ]
               }
-  :figwheel { :nrepl-port 7888 })
+  :scm {:name "git"
+         :url "https://github.com/mpdairy/posh"})
