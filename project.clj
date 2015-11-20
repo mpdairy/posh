@@ -1,4 +1,4 @@
-(defproject posh "0.1.0-SNAPSHOT"
+(defproject posh "0.2.0"
   :description "Reagent/DataScript combo that updates components on TX patterns"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
