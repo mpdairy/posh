@@ -1,4 +1,4 @@
-(defproject posh "0.2.1"
+(defproject posh "0.2.1.1"
   :description "Luxuriously easy and powerful Reagant / Datascript front-end framework"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
@@ -7,5 +7,15 @@
                  [org.clojure/clojurescript "1.7.170"]
                  [reagent "0.5.1"]
                  [datascript "0.13.3"]]
+  :plugins [[lein-cljsbuild "1.1.1"]]
+  :cljsbuild {
+              :builds [ {:id "posh" 
+                         :source-paths ["src/"]
+                         :figwheel true
+                         :compiler {  :main "posh.core"
+                                    :asset-path "js"
+                                    :output-to "resources/public/js/main.js"
+                                    :output-dir "resources/public/js"} } ]
+              }
   :scm {:name "git"
          :url "https://github.com/mpdairy/posh"})
