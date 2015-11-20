@@ -5,21 +5,27 @@
             [datascript.core :as d]))
 
 
+(enable-console-print!)
+
 ;;; setup
 (def conn (d/create-conn))
 
 (d/transact! conn
              [{:db/id -1 :group/name "Pine Club" :group/sort-by :person/name}
-              {:db/id -2 :group/name "Oak Club" :group/sort-by :person/age}
-              {:db/id -3 :person/name "Bob" :person/age 30 :person/group -1}
-              {:db/id -4 :person/name "Sally" :person/age 25 :person/group -2}
-              {:db/id -5 :person/name "Lodock" :person/age 45 :person/group -1}
-              {:db/id -6 :person/name "Janis" :person/age 22 :person/group -2}
-              {:db/id -7 :person/name "Angel-Bad" :person/age 14 :person/group -1}
-              {:db/id -8 :person/name "Shomo" :person/age 16 :person/group -2}
-              {:db/id -9 :person/name "Miagianna" :person/age 33 :person/group -1}
-              {:db/id -10 :person/name "Macy" :person/age 4 :person/group -2}
-              {:db/id -11 :person/name "Ojoto" :person/age 20 :person/group -1}])
+              {:db/id -2 :group/name "Oak Club" :group/sort-by :person/age}])
+
+(let [groups (d/q '[:find [?g ...] :where [?g :group/name _]] @conn)]
+  (d/transact!
+   conn
+   [{:db/id -3 :person/name "Bob" :person/age 30 :person/group (rand-nth groups)}
+    {:db/id -4 :person/name "Sally" :person/age 25 :person/group (rand-nth groups)}
+    {:db/id -5 :person/name "Lodock" :person/age 45 :person/group (rand-nth groups)}
+    {:db/id -6 :person/name "Janis" :person/age 22 :person/group (rand-nth groups)}
+    {:db/id -7 :person/name "Angel-Bad" :person/age 14 :person/group (rand-nth groups)}
+    {:db/id -8 :person/name "Shomo" :person/age 16 :person/group (rand-nth groups)}
+    {:db/id -9 :person/name "Miagianna" :person/age 33 :person/group (rand-nth groups)}
+    {:db/id -10 :person/name "Macy" :person/age 4 :person/group (rand-nth groups)}
+    {:db/id -11 :person/name "Ojoto" :person/age 20 :person/group (rand-nth groups)}]))
 
 (posh/setup conn)
 
@@ -33,28 +39,38 @@
 
 ;;; Components
 
+(defn ents [db ids]
+  (map (partial d/entity db) ids))
+
+(defn drunkard-club []
+  (let [db (db-tx [['_ :person/age #(>= % 21)]])
+        drunkards (ents @db (d/q '[:find [?p ...] :where
+                                   [?p :person/age ?a]
+                                   [(>= ?a 21)]]
+                                 @db))]
+    [:div "^^^^^  Drunkard Club  ^^^^^^"
+     [:ul
+      (for [p drunkards] ^{:key (:db/id p)} [:li (:person/name p)])]]))
+
 (defn person [id]
   (let [db (db-tx [[id]])]
     (fn [id]
-      (let [p (d/entity @db id)
-            _ (when (= (:person/age p) 11121)
-                (js/alert (str "Drink up, " (:person/name p) "!")))]
+      (let [p (d/entity @db id)]
         [:div
          {:on-click #(transact [[:db/add id :person/age (rand-int 30)]])}
          (pr-str (d/touch p))]))))
 
-#_(db-tx [[group-id]
-          [?p :person/dead true]]
-         [[?p :person/group group-id]])
-
-#_[:find ?p
-   :where
-   [234 :person/dead true]
-   [234 :person/group 48]]
-
 (defn group [group-id]
   (let [db (db-tx [[group-id]
-                   ['_ :person/group group-id]])]
+                   ['_ :person/group group-id]
+                   {'[?p :person/name _ _ true]
+                    [['?p :person/group group-id]
+                     '[?p :person/group ?g]
+                     '[?g :group/sort-by :person/name]]}
+                   {'[?p :person/age _ _ true]
+                    [['?p :person/group group-id]
+                     '[?p :person/group ?g]
+                     '[?g :group/sort-by :person/age]]}])]
     (fn []
       (let [g       (d/entity @db group-id)
             members (->> (d/q '[:find [?p ...]
@@ -65,16 +81,11 @@
                          (map #(d/entity @db %)))]
         [:div
          [:div " +++++ " (g :group/name) " +++++ " ]
-         [:div 
-          {:on-click #(do
-                        (transact
-                         [[:db/add (:db/id (second members)) :person/age 21]])
-                        (transact
-                         [[:db/add (:db/id (first members)) :person/age 221]]))}
-          "A GROUP:"]
          [:ul
+          [:div (pr-str (map :person/age (sort-by :person/age members)))]
           (->> members
-               (map (fn [p] [:div [person (:db/id p)]])))]]))))
+               (sort-by (g :group/sort-by))
+               (map (fn [p] ^{:key p} [:div [person (:db/id p)]])))]]))))
 
 (defn groups []
   (let [db (db-tx '[[_ :group/name]])]
@@ -84,14 +95,13 @@
                              [?id :group/name _]]
                            @db)]
         [:div "-----------------GROUPS----------------"
-         (pr-str group-ids)
-         (map (fn [g] [group g]) group-ids)]))))
+         (map (fn [g] ^{:key g} [group g]) group-ids)]))))
+
 
 (defn app []
   [:div
-   [groups]
-
-   ])
+   [drunkard-club]
+   [groups]])
 
 
 (defn start []

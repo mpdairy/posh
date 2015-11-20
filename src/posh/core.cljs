@@ -1,10 +1,10 @@
 (ns posh.core
-  (:require-macros [reagent.ratom :refer [reaction]]) 
+  (:require-macros [reagent.ratom :refer [reaction]])
   (:require [goog.dom :as gdom]
             [reagent.core :as r]
-            [datascript.core :as d]))
+            [datascript.core :as d]
+            [posh.tx-match :refer [tx-match? tx-patterns-match?]]))
 
-(enable-console-print!)
 
 (def posh-conn (atom (d/create-conn)))
 
@@ -22,6 +22,7 @@
   (d/listen! @posh-conn :history
              (fn [tx-report]
                (do
+                 ;;(println (pr-str (:tx-data tx-report)))
                  (doall (map (partial try-tx-listener tx-report) @tx-listeners))
                  (reset! last-tx-report tx-report)))))
 
@@ -34,41 +35,29 @@
 (defn transact [tx]
   ((partial d/transact! @posh-conn) tx))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; TX Pattern Match
-
-(defn tx-item-match? [pattern-item tx-datom-item]
-  (cond
-   (= pattern-item '_) true
-   (coll? pattern-item) (some #{tx-datom-item} pattern-item)
-   (fn? pattern-item) (pattern-item tx-datom-item)
-   :else (= pattern-item tx-datom-item)))
-
-(defn tx-pattern-match? [pattern tx-datom]
-  (cond
-   (empty? pattern) true
-   (tx-item-match? (first pattern) (first tx-datom))
-     (recur (rest pattern) (rest tx-datom))
-   :else false))
-
-(defn tx-patterns-match? [patterns tx-datoms]
-  (->> (for [p patterns
-             d tx-datoms]
-         (when (tx-pattern-match? p d) d))
-       (filter (fn [b] b))
-       first))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; db-tx 
+;;; db-tx
 
 ;; returns :db-after of any new tx that matches pattern
+;; memoizes, so it's prbly safe to put in form-1 components
 
-(defn db-tx [patterns]
-  (let [saved-db (atom (d/db @posh-conn))]
-    (reaction
-     (if (tx-patterns-match? patterns (:tx-data @last-tx-report))
-       (reset! saved-db (:db-after @last-tx-report))
-       @saved-db))))
+(def established-reactions (atom {}))
+
+(defn db-tx
+  ([patterns] (db-tx patterns nil))
+  ([patterns query]
+     (if-let [r (@established-reactions [patterns query])]
+       r
+       (let [new-reaction
+             (let [saved-db (atom (d/db @posh-conn))]
+               (reaction
+                (if (tx-match? @saved-db patterns query (:tx-data @last-tx-report))
+                  (reset! saved-db (:db-after @last-tx-report))
+                  @saved-db)))]
+         (swap! established-reactions merge
+                {[patterns query] new-reaction})
+         new-reaction))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; TX Listeners
