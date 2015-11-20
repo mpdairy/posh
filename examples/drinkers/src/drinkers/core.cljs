@@ -43,14 +43,87 @@
   (map (partial d/entity db) ids))
 
 (defn drunkard-club []
-  (let [db (db-tx [['_ :person/age #(>= % 21)]])
-        drunkards (ents @db (d/q '[:find [?p ...] :where
-                                   [?p :person/age ?a]
-                                   [(>= ?a 21)]]
-                                 @db))]
-    [:div "^^^^^  Drunkard Club  ^^^^^^"
-     [:ul
-      (for [p drunkards] ^{:key (:db/id p)} [:li (:person/name p)])]]))
+  (let [db (db-tx [['_ :person/age #(>= % 21)]])]
+    (fn []
+      (let [drunkards (ents @db (d/q '[:find [?p ...] :where
+                                      [?p :person/age ?a]
+                                      [(>= ?a 21)]]
+                                    @db))]
+          [:div "^^^^^  Drunkard Club  ^^^^^^"
+           [:ul
+            (for [p drunkards] ^{:key (:db/id p)} [:li (:person/name p)])]]))))
+
+(comment
+
+  (db-tx [[]])     ;; matches every tx
+
+  (db-tx [[453]])  ;; matches every tx with entity id of 435
+
+  ;; matches to any title changes for this book's id
+  (defn book [id]
+    (let [db (db-tx [[id :book/title]])]
+      ...))
+
+  ;; tx datoms are [entity attribute value time added?]
+  ;; this matches only those persons who just join a group
+  (db-tx '[[_ :person/group _ _ true]]) ;; remember to quote '
+
+  ;; if you have external variables you'll have to unquote the form
+  ;; and quote each _
+  (let [color "red"]
+    (db-tx [['_ :car/color color]]))
+  
+  ;; multiple patterns. If it matches one of them it updates
+  (db-tx '[[_ :person/name]
+           [_ :person/age]
+           [_ :person/group]])
+
+  ;; You can use predicate functions in the match.
+  ;; The function will get passed the datom's value
+  
+  ;; this will match any person older than 20
+  (db-tx [['_ :person/age #(> % 20)]])
+
+  ;; but it's bad to use anonymous functions in the pattern like this
+  ;; because db-tx memoizes and ClojureScript doesn't know that
+  ;; #(+ 3 %) equals #(+ 3 %) so it gobbles up memory
+
+  ;; So you either need to define your functions or, if you do use
+  ;; anonymous functions, at least do it in the outer binding of
+  ;; a form-2 component.
+
+  ;; same thing, but nice for memoizing
+  (defn >20? [n] (> n 20))
+  (db-tx [['_ :person/age >20?]])
+
+  ;; match on any attrib change for a person
+  (defn person-attrib? [a] (= (namespace a) "person"))
+  (db-tx [['_ person-attrib?]])
+
+  ;; you can also group together possibilities in a vector.
+
+  ;; matches on the actions "drink" "burp" "sleep"
+  (db-tx [['_ :person/action ["drink" "burp" "sleep"]]])
+
+  ;; matches either of two people with id's 123 or 234, if either
+  ;; their name or age changes:
+  (db-tx [[[123 234] [:person/name :person/age]]])
+
+  
+
+
+  )
+
+(defn ten-year-olds []
+  (let [db   (db-tx '[[_ :person/age 10]])
+        kids (map (partial d/entity @db)
+                  (d/q '[:find [?p ...] :where
+                         [?p :person/age ?a]
+                         [(= ?a 21)]]
+                       @db))]
+    [:ul "These kids are ten years old:"
+     (for [k kids]
+       ^{:key (:db/id k)} [:li (:person/name k)])]))
 
 (defn person [id]
   (let [db (db-tx [[id]])]

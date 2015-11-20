@@ -82,6 +82,7 @@
 
 (def history (atom []))
 
+(defn jim [n] (+ 3 n))
 
 (d/listen! conn :history
            (fn [tx-report]
