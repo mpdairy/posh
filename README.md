@@ -276,11 +276,19 @@ in the pattern match.
                           (:person/name (d/entity db e)) "."))))
 ```
 
+You could use `when-tx` to handle events or to trigger communication
+with the server.
+
 ## transact
 
 Right now, `transact` just calls `d/transact!`, but maybe in the future
 it might have to do some pre-transaction filtering or something, so
 heck you might as well start using it.
+
+## more later...
+
+I haven't even looked at how to communicate with the back-end yet.
+Maybe there's some cool, easy way to do it.
 
 ## License
 
