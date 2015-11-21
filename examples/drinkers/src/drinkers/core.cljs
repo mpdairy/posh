@@ -32,7 +32,8 @@
 ;;; TX Listeners
 
 ;; congratulates anyone who turns 21
-(when-tx '[[_ :person/age 21 _ true]]
+(when-tx conn
+         '[[_ :person/age 21 _ true]]
          (fn [[e a v] db]
            (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
 
@@ -43,7 +44,7 @@
   (map (partial d/entity db) ids))
 
 (defn drunkard-club []
-  (let [db (db-tx [['_ :person/age #(>= % 21)]])]
+  (let [db (db-tx conn [['_ :person/age #(>= % 21)]])]
     (fn []
       (let [drunkards (ents @db (d/q '[:find [?p ...] :where
                                       [?p :person/age ?a]
@@ -115,7 +116,7 @@
   )
 
 (defn ten-year-olds []
-  (let [db   (db-tx '[[_ :person/age 10]])
+  (let [db   (db-tx conn '[[_ :person/age 10]])
         kids (map (partial d/entity @db)
                   (d/q '[:find [?p ...] :where
                          [?p :person/age ?a]
@@ -126,7 +127,7 @@
        ^{:key (:db/id k)} [:li (:person/name k)])]))
 
 (defn person [id]
-  (let [db (db-tx [[id]])]
+  (let [db (db-tx conn [[id]])]
     (fn [id]
       (let [p (d/entity @db id)]
         [:div
@@ -134,9 +135,9 @@
          (pr-str (d/touch p))]))))
 
 (defn bookshelf [bookshelf-id]
-  (let [db    (db-tx [[bookshelf-id]
-                      ['_ :book/bookshelf bookshelf-id]
-                      '[?b :book/name]]
+  (let [db    (db-tx conn [[bookshelf-id]
+                           ['_ :book/bookshelf bookshelf-id]
+                           '[?b :book/name]]
                      [['?b :book/bookshelf bookshelf-id]])
         b     (d/entity @db bookshelf-id)
         books (map (partial d/entity @db)
@@ -150,7 +151,8 @@
        ^{:key (:db/id b)} [:li (:book/name b)])]))
 
 (defn group [group-id]
-  (let [db (db-tx [[group-id]
+  (let [db (db-tx conn
+                  [[group-id]
                    ['_ :person/group group-id]
                    {'[?p :person/name _ _ true]
                     [['?p :person/group group-id]
@@ -177,7 +179,7 @@
                (map (fn [p] ^{:key p} [:div [person (:db/id p)]])))]]))))
 
 (defn groups []
-  (let [db (db-tx '[[_ :group/name]])]
+  (let [db (db-tx conn '[[_ :group/name]])]
     (fn []
       (let [group-ids (d/q '[:find [?id ...]
                              :where

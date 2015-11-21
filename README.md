@@ -177,7 +177,7 @@ query, even functions like:
        '[[?p :person/age ?a]
          [(< ?a 21)]])
 ```
-This matches to any minors who are drinking.
+which matches to any minors who are drinking.
 
 You can match as many variables as you'd like, but the query only gets
 run with the first matching pattern that returns vars. This is
@@ -214,12 +214,15 @@ can unify with `'[?g :group/sort-by :person/name]`. You can't just do
 
 Another weird thing you can do is use a function to return a variable
 or set of variables that can then be used to bind to a query. Just put
-them in a map. This does the same thing as above:
+them in a map. This does the same thing as above, except it will work
+with anything tags you put into `person-sortables`.
 
 ```clj
+(def person-sortables [:person/name :person/age :person/height :person/weight])
+
 (defn person-sortable [a]
-  (when (some #{a} [:person/name :person/age :person/money :person/religion])
-    {`?sort-attr a}))
+  (when (some #{a} person-sortables)
+    {'?sort-attr a}))
 
 (db-tx [[group-id]
         ['_ :person/group group-id]
@@ -228,6 +231,22 @@ them in a map. This does the same thing as above:
           '[?p :person/group ?g]
           '[?g :group/sort-by ?sort-attr]]}])
 ```
+
+## (when-tx conn tx-pattern handler-fn)
+
+`when-tx` sets up a listener that watches for a pattern match, then
+calls `(handler-fn matching-datom db)`. Right now it can't do queries
+in the pattern match.
+
+```clj
+;; congratulates anyone who turns 21
+(when-tx conn
+         '[[_ :person/age 21 _ true]]
+         (fn [[e a v] db]
+           (js/alert (str "You have come of age, " (:person/name
+           (d/entity db e)) "."))))
+```
+
 
 ## License
 

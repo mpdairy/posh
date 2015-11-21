@@ -8,6 +8,8 @@
 
 (def posh-conn (atom (d/create-conn)))
 
+(def posh-conns (atom {}))
+
 (defonce last-tx-report (r/atom []))
 
 (def newly-registered-tx-listeners (atom []))
@@ -15,26 +17,28 @@
 (declare tx-listeners)
 (declare try-tx-listener)
 
-(defn setup [uconn]
-  (reset! tx-listeners @newly-registered-tx-listeners)
-  (reset! newly-registered-tx-listeners [])
-  (reset! posh-conn uconn)
-  (d/listen! @posh-conn :history
+(defn init! [conn]
+  ;;(reset! tx-listeners @newly-registered-tx-listeners)
+  ;;(reset! newly-registered-tx-listeners [])
+  (swap! posh-conns merge {conn {:last-tx-report (r/atom [])
+                                 :conn           (atom conn)
+                                 :tx-listeners   (atom [])}})
+  (d/listen! @(:conn (@posh-conns conn)) :history
              (fn [tx-report]
                (do
                  ;;(println (pr-str (:tx-data tx-report)))
-                 (doall (map (partial try-tx-listener tx-report) @tx-listeners))
-                 (reset! last-tx-report tx-report)))))
+                 (doall (map (partial try-tx-listener tx-report)
+                             @(:tx-listeners (@posh-conns conn))))
+                 (reset! (:last-tx-report (@posh-conns conn)) tx-report)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; transact
 
 ;; might have to make this something that combines the tx's or adds
-;; filters or something. For now this seems to work
+;; filters or something. For now it's sort of pointless.
 
-(defn transact [tx]
-  ((partial d/transact! @posh-conn) tx))
-
+(defn transact [conn tx]
+  (d/transact! conn tx))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; db-tx
@@ -45,18 +49,19 @@
 (def established-reactions (atom {}))
 
 (defn db-tx
-  ([patterns] (db-tx patterns nil))
-  ([patterns query]
-     (if-let [r (@established-reactions [patterns query])]
+  ([conn patterns] (db-tx conn patterns nil))
+  ([conn patterns query]
+     (if-let [r (@established-reactions [conn patterns query])]
        r
        (let [new-reaction
-             (let [saved-db (atom (d/db @posh-conn))]
+             (let [saved-db (atom (d/db conn))]
                (reaction
-                (if (tx-match? @saved-db patterns query (:tx-data @last-tx-report))
-                  (reset! saved-db (:db-after @last-tx-report))
+                (if (tx-match? @saved-db patterns query
+                               (:tx-data @(:last-tx-report (@posh-conns conn))))
+                  (reset! saved-db (:db-after @(:last-tx-report (@posh-conns conn))))
                   @saved-db)))]
          (swap! established-reactions merge
-                {[patterns query] new-reaction})
+                {[conn patterns query] new-reaction})
          new-reaction))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -64,16 +69,16 @@
 
 ;; listens for any patterns in the tx-log and runs f
 ;; f takes the args [matching-tx-datom db]
-(def tx-listeners (atom []))
+;;(def tx-listeners (atom []))
 
 ;; there were problems with duplicates being loaded when using figwheel
-(reset! tx-listeners (vec (set @tx-listeners)))
+;;(reset! tx-listeners (vec (set @tx-listeners)))
 
 (defn try-tx-listener [tx-report [patterns handler-fn]]
   (when-let [matching-datom
              (tx-patterns-match? patterns (:tx-data tx-report))]
     (handler-fn matching-datom (:db-after tx-report))))
 
-(defn when-tx [patterns handler-fn]
-  (swap! tx-listeners conj [patterns handler-fn]))
+(defn when-tx [conn patterns handler-fn]
+  (swap! (:tx-listeners (@posh-conns conn)) conj [patterns handler-fn]))
 

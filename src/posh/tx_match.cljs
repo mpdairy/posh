@@ -62,10 +62,6 @@
        (remove nil?)
        first))
 
-
-
-
-
 (defn build-query [vars query]
   (let [ks (keys vars)]
     (vec (concat [:find (vec ks)] 
@@ -74,14 +70,11 @@
                  [:where] query))))
 
 (defn query-unifies? [db vars query]
-  (println (pr-str vars) "   " (pr-str query)
-           "  " (pr-str (apply
-         (partial d/q (build-query vars query))
-         (cons db (vals vars)))))
-  (not (empty?
-        (apply
-         (partial d/q (build-query vars query))
-         (cons db (vals vars))))))
+  (when (not (empty?
+              (apply
+               (partial d/q (build-query vars query))
+               (cons db (vals vars)))))
+    vars))
 
 (defn tx-match? [db patterns query tx-datoms]
   (when-let [vars (tx-patterns-match-q? db patterns tx-datoms)]

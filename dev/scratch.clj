@@ -3,6 +3,28 @@
 
 (def conn (d/create-conn))
 
+
+(def posh-conns (atom {}))
+(defn init! [conn]
+  ;;(reset! tx-listeners @newly-registered-tx-listeners)
+  ;;(reset! newly-registered-tx-listeners [])
+  (swap! posh-conns merge {conn {:last-tx-report (atom [])
+                                 :conn           (atom conn)}})
+  
+  #_(d/listen! @(:conn (@posh-conns conn)) :history
+             (fn [tx-report]
+               (do
+                 ;;(println (pr-str (:tx-data tx-report)))
+                 ;;(doall (map (partial try-tx-listener tx-report) @tx-listeners))
+                 (reset! (:last-tx-report (@posh-conns conn)) tx-report)))))
+
+(init! conn)
+
+@(:conn (@posh-conns conn))
+
+(def bill {conn 5})
+
+
 (def posh-conn (atom nil))
 
 (def last-tx-report (atom []))
@@ -34,7 +56,6 @@
        [?g :group/sort-by :person/name]]
      @conn)
 
-(d/entity @conn [:person/name "Bob"])
 
 @last-tx-report
 
@@ -49,6 +70,12 @@
                (reset! last-tx-report tx-report))))
 
 (setup conn)
+
+(defn person-sortable [a]
+  (when (some #{a} [:person/name :person/age :person/money :person/religion])
+    {'?sort-attr a}))
+
+(person-sortable :person/name)
 
 
 (def db (d/db conn))
