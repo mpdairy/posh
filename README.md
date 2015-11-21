@@ -1,5 +1,7 @@
 # Posh
-
+```clj
+[posh "0.2.2"]
+```
 Posh is a little library that lets you use a DataScript database to
 keep your application state. All components have access to the
 complete database, but watch the database's transaction report and
@@ -8,10 +10,6 @@ only update when pertinent changes occur.
 This gives your components all the power of DataScript queries,
 entities, pull requests, etc, but is still very fast, even with a
 large database.
-
-```clj
-[posh "0.2.2"]
-```
 
 ## Overview
 
