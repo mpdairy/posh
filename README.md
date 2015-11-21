@@ -25,6 +25,8 @@ added, or `false` if it was retracted.
 
 ### init!
 
+Sets up the tx-report listener for a conn.
+
 ```clj
 (ns ...
    (:require [reagent.core :as r]
