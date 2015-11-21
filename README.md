@@ -198,7 +198,7 @@ For example:
 This grabs the `?b` from the last pattern (if the rest of the pattern
 matches first) and it runs the query below to see if the book is part of
 the bookshelf. You can do anything you could normally do in a regular
-query, even functions like:
+DataScript `q` query, even functions like:
 
 ```clj
 (db-tx conn '[[?p :person/action :drinking]]
@@ -206,9 +206,6 @@ query, even functions like:
               [(< ?a 21)]])
 ```
 which matches to any minors who are drinking.
-
-The query just uses DataScripts `q` function. It doesn't get called
-to try to unify patterns unless the pattern has at least one variable.
 
 You can match as many variables as you'd like, but the query only gets
 run with the first matching pattern that returns vars. This is
