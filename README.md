@@ -68,11 +68,18 @@ re-render until somebody turns 10.
 
 #### Pattern Matching
 
-The tx pattern matching used in `db-tx` is very powerful. Here's are
-examples of all the ways a pattern can match:
+The tx pattern matching used in `db-tx` is very powerful. You can
+match on any attribute, use wildcards, and even throw in some side
+queries so that your component doesn't update unless it really needs to.
+Here are examples of all the ways patterns can match:
 
 ```clj
-  ;; it can be shorter than the tx report datom
+
+  ;; db-tx takes a list of multiple patterns
+  ;; each pattern is tried until one is true
+
+  ;; a pattern can be shorter than the tx report datom
+  ;; everything after the pattern ends is assumed to match
 
   ;; matches every tx
   (db-tx conn [[]])
@@ -103,8 +110,8 @@ examples of all the ways a pattern can match:
   
   ;; multiple patterns. If it matches any one of them it updates
   (db-tx conn '[[_ :person/name]
-              [_ :person/age]
-              [_ :person/group]])
+                [_ :person/age]
+                [_ :person/group]])
 
   ;; You can use predicate functions in the match.
   ;; The function will get passed the datom's value as an arg
@@ -117,7 +124,7 @@ examples of all the ways a pattern can match:
   ;; #(> % 20) equals #(> % 20) so it gobbles up memory
 
   ;; So you either need to define your functions or, if you do use
-  ;; anonymous functions, at least do it in the outer binding of
+  ;; anonymous functions, at least put `db-tx` in the outer binding of
   ;; a form-2 component.
 
   ;; same thing, but nice for memoizing
