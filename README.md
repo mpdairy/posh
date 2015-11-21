@@ -255,7 +255,7 @@ with anything tags you put into `person-sortables`.
 ## when-tx
 
 `(when-tx conn tx-patterns handler-fn)` sets up a listener that watches for a pattern match, then
-calls `(handler-fn matching-datom db)`. Right now it can't do queries
+calls `(handler-fn matching-tx-datom db-after)`. Right now it can't do queries
 in the pattern match.
 
 ```clj
