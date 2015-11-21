@@ -272,8 +272,8 @@ in the pattern match.
 (when-tx conn
          '[[_ :person/age 21 _ true]]
          (fn [[e a v] db]
-           (js/alert (str "You have come of age, " (:person/name
-           (d/entity db e)) "."))))
+           (js/alert (str "You have come of age, "
+                          (:person/name (d/entity db e)) "."))))
 ```
 
 ## transact
