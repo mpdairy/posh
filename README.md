@@ -150,10 +150,10 @@ Here are examples of all the ways patterns can match:
 
 In some cases you might want to do a little querying to get some extra
 information. For example, suppose we have a bookshelf component that
-prints out the names of all its books in alphabetical order. We'd want
+prints out the names of all its books in alphabetical order. You'd want
 to listen for any changes to the bookshelf itself (like its own name)
-and we want to know when the title of any of the books changes so we
-can re-sort the shelf. Here's an inefficient example:
+and you want to know when the title of any of the books changes so you
+can re-sort the shelf. Here's a less efficient example:
 
 ```clj
 (defn bookshelf [bookshelf-id]
@@ -180,7 +180,7 @@ any books that get added to or retracted from the bookshelf.
 
 `'[_ :book/name]` watches for the change of any book names so it can
 re-sort the list. The problem with this is that it will match books
-that aren't even on its bookshelf. Thus, if we had a hundred
+that aren't even on its bookshelf. If we had a hundred
 bookshelves, changing the name of one book would cause them all the
 re-render--not good!
 
@@ -190,8 +190,8 @@ For example:
 
 ```clj
 (db-tx conn [[bookshelf-id]
-            ['_ :book/bookshelf bookshelf-id]
-            '[?b :book/name]]
+             ['_ :book/bookshelf bookshelf-id]
+             '[?b :book/name]]
             [['?b :book/bookshelf bookshelf-id]])
 ```
 
