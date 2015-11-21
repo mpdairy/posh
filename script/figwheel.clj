@@ -7,8 +7,8 @@
    :all-builds
    [{:id "dev"
      :figwheel true
-     :source-paths ["src"]
-     :compiler {:main 'posh.example
+     :source-paths ["dev"]
+     :compiler {:main 'example
                 :asset-path "js"
                 :output-to "resources/public/js/main.js"
                 :output-dir "resources/public/js"

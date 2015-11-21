@@ -1,4 +1,4 @@
-(ns drinkers.core
+(ns example
   (:require-macros [reagent.ratom :refer [reaction]])
   (:require [reagent.core :as r]
             [posh.core :refer [db-tx when-tx transact] :as posh]
@@ -149,17 +149,29 @@
      (for [b (sort-by :book/name books)]
        ^{:key (:db/id b)} [:li (:book/name b)])]))
 
+(comment (db-tx [[group-id]
+                 ['_ :person/group group-id]
+                 {'[?p :person/name _ _ true]
+                  [['?p :person/group group-id]
+                   '[?p :person/group ?g]
+                   '[?g :group/sort-by :person/name]]}
+                 {'[?p :person/age _ _ true]
+                  [['?p :person/group group-id]
+                   '[?p :person/group ?g]
+                   '[?g :group/sort-by :person/age]]}]))
+
+(defn person-sortable [a]
+  (if (some #{a} [:person/name :person/age :person/money :person/religion])
+    {`?sort-attr a}))
+
+
 (defn group [group-id]
   (let [db (db-tx [[group-id]
                    ['_ :person/group group-id]
-                   {'[?p :person/name _ _ true]
+                   {['?p person-sortable '_ '_ true]
                     [['?p :person/group group-id]
                      '[?p :person/group ?g]
-                     '[?g :group/sort-by :person/name]]}
-                   {'[?p :person/age _ _ true]
-                    [['?p :person/group group-id]
-                     '[?p :person/group ?g]
-                     '[?g :group/sort-by :person/age]]}])]
+                     '[?g :group/sort-by ?sort-attr]]}])]
     (fn []
       (let [g       (d/entity @db group-id)
             members (->> (d/q '[:find [?p ...]

@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "1.7.170"]
                  [reagent "0.5.1"]
-                 [datascript "0.13.3"]]
+                 [datascript "0.13.3"]
+                 [figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]]
   :plugins [[lein-cljsbuild "1.1.1"]]
   :cljsbuild {
               :builds [ {:id "posh" 
@@ -18,4 +19,4 @@
                                     :output-dir "resources/public/js"} } ]
               }
   :scm {:name "git"
-         :url "https://github.com/mpdairy/posh"})
+        :url "https://github.com/mpdairy/posh"})

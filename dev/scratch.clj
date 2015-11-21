@@ -84,6 +84,10 @@
 
 (defn jim [n] (+ 3 n))
 
+(first (remove nil? (filter  [1 2 3 4 5])))
+
+(some (fn [n] (when (= 3 n) :good)) [1 2 3 4 5])
+
 (d/listen! conn :history
            (fn [tx-report]
              (swap! history #(cons (first %1) %2) tx-report)))
@@ -151,6 +155,9 @@
       (when-let [v (tx-item-match-q? (first pattern) (first tx-datom))]
         (recur (rest pattern) (rest tx-datom) (if (map? v) (merge v vars) vars))))))
 
+(tx-pattern-match-q? ['?id (fn [a] {'?a a}) '?n]
+                  [123 :person/name "Jones"])
+
 (declare query-unifies?)
 
 (defn tx-patterns-match-q? [db patterns tx-datoms]
@@ -163,7 +170,7 @@
        (remove nil?)
        first))
 
-(tx-patterns-match-q? (d/db conn) [{['?p :person/name "Bob"]
+(tx-patterns-match-q? (d/db conn) [{['?p (fn [a] {`?a :person/}) "Bob"]
                                      [['?p :person/age 30]]}]
 
                       [[3 :person/name "Bob"]])
