@@ -217,8 +217,7 @@ Suppose we have a `group` that sorts people either by name or by age.
 Let's say we are pretty thorough and only want to re-render the
 component when it's sorting by age and a person's age changes, or when it's
 sorting by name and a person's name changes, but not when a person's
-age changes and it's sorting by name, etc. We could do it this way,
-which is rather verbose:
+age changes and it's sorting by name, etc. You could do it this way:
 
 ```clj
 (db-tx conn
@@ -233,7 +232,7 @@ which is rather verbose:
           '[?p :person/group ?g]
           '[?g :group/sort-by :person/age]]}])
 ```
-Of course, you can generate the matching patterns and queries
+That's pretty verbose. Of course, you can generate the matching patterns and queries
 programatically.
 
 (You should notice here that `'[?p :person/group ?g]` follows
@@ -244,7 +243,7 @@ can unify with `'[?g :group/sort-by :person/name]`. You can't just do
 Another weird thing you can do is use a function to return a variable
 or set of variables that can then be used to bind to a query. Just put
 them in a map. This does the same thing as above, except it will work
-with anything tags you put into `person-sortables`.
+with any tags you put into `person-sortables`.
 
 ```clj
 (def person-sortables [:person/name :person/age :person/height :person/weight])
