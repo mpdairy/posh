@@ -203,7 +203,7 @@ query, even functions like:
 ```clj
 (db-tx conn '[[?p :person/action :drinking]]
             '[[?p :person/age ?a]
-            [(< ?a 21)]])
+              [(< ?a 21)]])
 ```
 which matches to any minors who are drinking.
 
