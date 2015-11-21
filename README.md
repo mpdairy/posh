@@ -9,6 +9,10 @@ This gives your components all the power of DataScript queries,
 entities, pull requests, etc, but is still very fast, even with a
 large database.
 
+```clj
+[posh "0.2.2"]
+```
+
 ## Overview
 
 In DataScript, the database is changed by submitting datoms, like
