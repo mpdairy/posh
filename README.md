@@ -19,17 +19,33 @@ ID, `:book/title` is the attribute, `"Bad Money"` is the value,
 `555555` is the time of the transaction, and `true` is if it was
 added, or `false` if it was retracted.
 
-## db-tx
+## Functions
 
-The heart of Posh is the function `db-tx`, which takes a list of tx patterns as
+### init!
+
+```clj
+(ns ...
+   (:require [reagent.core :as r]
+          [posh.core :refer [db-tx when-tx transact] :as posh]
+          [datascript.core :as d]))
+
+(def conn (d/create-conn))
+
+;;; sets up tx report listener for conn
+(posh/init! conn)
+```
+
+### db-tx
+
+The heart of Posh is the function `db-tx`, which takes a `conn` and a list of tx patterns as
 input and returns a Regeant `reaction` that updates only when one of
-the database's tx report datoms match one of the patterns. It returns
-the value of the whole database right after the tx that it matches. A
+the database's tx report datoms match one of the patterns. The reaction returns
+the value of the whole database (`:db-after`) after the tx that it matches. A
 really simple example:
 
 ```clj
 (defn ten-year-olds []
-  (let [db   (db-tx '[[_ :person/age 10]])
+  (let [db   (db-tx conn '[[_ :person/age 10]])
         kids (map (partial d/entity @db)
                   (d/q '[:find [?p ...] :where
                          [?p :person/age ?a]
@@ -40,13 +56,13 @@ really simple example:
        ^{:key (:db/id k)} [:li (:person/name k)])]))
 ```
 
-So, we define `db` to be `(db-tx '[[_ :person/age 10]])`, which
+So, we define `db` to be `(db-tx conn '[[_ :person/age 10]])`, which
 returns an atom of sorts that only changes when someone's age changes
 to 10 (or gets retracted, like if they turn 11). I know, it's hard to
 believe--it's not even a form-2 component--but it really won't
 re-render until somebody turns 10.
 
-### Pattern Matching
+#### Pattern Matching
 
 The tx pattern matching used in `db-tx` is very powerful. Here's are
 examples of all the ways a pattern can match:
@@ -55,15 +71,15 @@ examples of all the ways a pattern can match:
   ;; it can be shorter than the tx report datom
 
   ;; matches every tx
-  (db-tx [[]])
+  (db-tx conn [[]])
 
   ;; matches every tx with entity id of 435
-  (db-tx [[453]])
+  (db-tx conn [[453]])
 
 
   ;; matches to any title changes for this book's id
   (defn book [id]
-    (let [db (db-tx [[id :book/title]])]
+    (let [db (db-tx conn [[id :book/title]])]
       ...))
 
   ;; underscore symbol is wildcard, but it must be quoted
@@ -74,23 +90,23 @@ examples of all the ways a pattern can match:
   ;; tx datoms are [entity attribute value time added?]
   ;; this matches only those persons who just left a group
   ;; since 'false' means it was retracted
-  (db-tx '[[_ :person/group _ _ false]])
+  (db-tx conn '[[_ :person/group _ _ false]])
 
   ;; if you have external variables you'll have to unquote the form
   ;; and quote each underscore
   (let [color "red"]
-    (db-tx [['_ :car/color color]]))
+    (db-tx conn [['_ :car/color color]]))
   
   ;; multiple patterns. If it matches any one of them it updates
-  (db-tx '[[_ :person/name]
-           [_ :person/age]
-           [_ :person/group]])
+  (db-tx conn '[[_ :person/name]
+              [_ :person/age]
+              [_ :person/group]])
 
   ;; You can use predicate functions in the match.
   ;; The function will get passed the datom's value as an arg
   
   ;; this will match any person older than 20
-  (db-tx '[[_ :person/age #(> % 20)]])
+  (db-tx conn '[[_ :person/age #(> % 20)]])
 
   ;; but it's bad to use anonymous functions in the pattern like this
   ;; because db-tx memoizes and ClojureScript doesn't know that
@@ -102,23 +118,24 @@ examples of all the ways a pattern can match:
 
   ;; same thing, but nice for memoizing
   (defn >20? [n] (> n 20))
-  (db-tx [['_ :person/age >20?]])
+  (db-tx conn [['_ :person/age >20?]])
 
   ;; match on any attrib change for a person,
   ;; like :person/name, :person/age, but not :book/name
   (defn person-attrib? [a] (= (namespace a) "person"))
-  (db-tx [['_ person-attrib?]])
+  (db-tx conn [['_ person-attrib?]])
 
   ;; you can also group together possibilities in a vector.
 
   ;; matches on the actions "drink" "burp" "sleep"
-  (db-tx [['_ :person/action ["drink" "burp" "sleep"]]])
+  (db-tx conn [['_ :person/action ["drink" "burp" "sleep"]]])
 
   ;; matches either of two people with id's 123 or 234, if either
   ;; their name or age changes:
-  (db-tx [[[123 234] [:person/name :person/age]]])
+  (db-tx conn [[[123 234] [:person/name :person/age]]])
 ```
-## Query Matching
+
+#### Query Matching
 
 In some cases you might want to do a little querying to get some extra
 information. For example, suppose we have a bookshelf component that
@@ -129,7 +146,8 @@ can re-sort the shelf. Here's an inefficient example:
 
 ```clj
 (defn bookshelf [bookshelf-id]
-  (let [db    (db-tx [[bookshelf-id]
+  (let [db    (db-tx conn
+                     [[bookshelf-id]
                       ['_ :book/bookshelf bookshelf-id]
                       '[_ :book/name]])
         b     (d/entity @db bookshelf-id)
@@ -160,10 +178,10 @@ see if the query unifies with variables it pulls from your pattern.
 For example:
 
 ```clj
-(db-tx [[bookshelf-id]
-        ['_ :book/bookshelf bookshelf-id]
-        '[?b :book/name]]
-        [['?b :book/bookshelf bookshelf-id]])
+(db-tx conn [[bookshelf-id]
+            ['_ :book/bookshelf bookshelf-id]
+            '[?b :book/name]]
+            [['?b :book/bookshelf bookshelf-id]])
 ```
 
 This grabs the `?b` from the last pattern (if the rest of the pattern
@@ -173,9 +191,9 @@ the bookshelf. You can do anything you could normally do in a regular
 query, even functions like:
 
 ```clj
-(db-tx '[[?p :person/action :drinking]]
-       '[[?p :person/age ?a]
-         [(< ?a 21)]])
+(db-tx conn '[[?p :person/action :drinking]]
+            '[[?p :person/age ?a]
+            [(< ?a 21)]])
 ```
 which matches to any minors who are drinking.
 
@@ -193,7 +211,8 @@ age changes and it's sorting by name, etc. We could do it this way,
 which is rather verbose:
 
 ```clj
-(db-tx [[group-id]
+(db-tx conn
+       [[group-id]
         ['_ :person/group group-id]
         {'[?p :person/name _ _ true]
          [['?p :person/group group-id]
@@ -224,7 +243,8 @@ with anything tags you put into `person-sortables`.
   (when (some #{a} person-sortables)
     {'?sort-attr a}))
 
-(db-tx [[group-id]
+(db-tx conn
+       [[group-id]
         ['_ :person/group group-id]
         {['?p person-sortable '_ '_ true]
          [['?p :person/group group-id]
@@ -232,9 +252,9 @@ with anything tags you put into `person-sortables`.
           '[?g :group/sort-by ?sort-attr]]}])
 ```
 
-## (when-tx conn tx-pattern handler-fn)
+## when-tx
 
-`when-tx` sets up a listener that watches for a pattern match, then
+`(when-tx conn tx-patterns handler-fn)` sets up a listener that watches for a pattern match, then
 calls `(handler-fn matching-datom db)`. Right now it can't do queries
 in the pattern match.
 
@@ -247,6 +267,11 @@ in the pattern match.
            (d/entity db e)) "."))))
 ```
 
+## transact
+
+Right now, `transact` just calls `d/transact!`, but maybe in the future
+it might have to do some pre-transaction filtering or something, so
+heck you might as well start using it.
 
 ## License
 
