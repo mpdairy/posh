@@ -27,7 +27,7 @@
     {:db/id -10 :person/name "Macy" :person/age 4 :person/group (rand-nth groups)}
     {:db/id -11 :person/name "Ojoto" :person/age 20 :person/group (rand-nth groups)}]))
 
-(posh/setup conn)
+(posh/init! conn)
 
 ;;; TX Listeners
 
