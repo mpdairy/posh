@@ -96,9 +96,34 @@ whenever you click on it.
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) " -- " (:person/age p)]))
 ```
-     
 
-#### Pattern Matching
+### pull-tx and pull
+
+(Not yet implemented)
+
+`pull-tx` and `pull` are just like DataScript's pull, but they only
+update the components that call them when the pull request changes.
+Also, `pull-tx` takes a tx-matching limiter so that the pull request
+won't be run unless it matches the pattern. `pull` just basically runs
+`(pull-tx conn '[[]] ...)` so it tries the pull request every time
+there is any new tx, thus it's more expensive.
+
+Also note that `pull-tx` takes a conn instead of a db value.
+
+They both return a vector containing the db value at the time of the
+pull and the result of the pull request.
+
+An example, that pulls all of the info from the entity with `id`
+whenever `id` is updated:
+
+```clj
+(defn person [id]
+  (let [[db p] (pull-tx conn '[[id]] `[*] id)]
+    ...))
+```
+
+### Pattern Matching
+#### Tx Datoms
 
 The tx pattern matching used in `db-tx` is very powerful. You can
 match on any attribute, use wildcards, and even throw in some side

@@ -51,6 +51,12 @@
 
 (def bob (d/entity (d/db conn) 3))
 
+(:group/name (:person/group (d/pull @conn '[*] 3)))
+
+
+(defn person [id]
+  (let [p (pull-tx conn '[[id]] `[*] id)]
+    ...))
 
 (def bob-db (d/db conn))
 (:person/name (d/entity bob-db 3))
