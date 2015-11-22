@@ -78,7 +78,6 @@ whenever you click on it.
      (:person/name p) " -- " (:person/age p)]))
 ```
      
-Components can also pretty easily effect eachother.
 
 #### Pattern Matching
 
@@ -336,14 +335,6 @@ Alternatively, you could use no local atom and just transact the value
 directly to the db as the user types. Or, best of all, you could update a temporary
 attrib in the db and then set that to equal the original value when
 the editing is finished, so that all state is saved in the db.
-
-### Affecting other Components Properly
-
-Let's say you have a `person` component and you want to have a button
-that will make the person give $1 to every other person in the group.
-So you need your transaction to count the number of people in the
-group (minus the giver) and take that many dollars away from the
-giver. Then it needs to give everything to the 
 
 ## More later...
 
