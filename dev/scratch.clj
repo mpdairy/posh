@@ -39,7 +39,7 @@
 (let [groups (d/q '[:find [?g ...] :where [?g :group/name _]] @conn)]
   (d/transact!
    conn
-   [{:db/id -3 :person/name "Bob" :person/age 30 :person/group (rand-nth groups)}
+   [{:db/id -3 :person/name "Bob" :person/age 30 :person/group (rand-nth groups) :person/dog "Mojo"}
     {:db/id -4 :person/name "Sally" :person/age 25 :person/group (rand-nth groups)}
     {:db/id -5 :person/name "Lodock" :person/age 45 :person/group (rand-nth groups)}
     {:db/id -6 :person/name "Janis" :person/age 22 :person/group (rand-nth groups)}
@@ -52,7 +52,6 @@
 (def bob (d/entity (d/db conn) 3))
 
 (:group/name (:person/group (d/pull @conn '[*] 3)))
-
 
 (defn person [id]
   (let [p (pull-tx conn '[[id]] `[*] id)]
@@ -142,6 +141,17 @@
            (fn [tx-report]
              (swap! history #(cons (first %1) %2) tx-report)))
 
+(defn build-query [db q & args]
+  (apply (partial d/q q)
+         (cons db (or args []))))
+
+(build-q @conn '[:find ?age .
+                 :in $ ?name
+                 :where
+                 [?p :person/name ?name]
+                 [?p :person/age ?age]]
+         "Bob")
+
 (d/listen! conn :history
            (fn [tx-report]
              (reset! history tx-report)))
@@ -151,6 +161,10 @@
 
 (first @history)
 
+(map #(* % %) [1 2 3])
+
+
+(map #(or ({2 :hey} %) %) [1 2 3])
 (let [{:keys [e a v added]} (first (:tx-data (first @history)))]
   [e a v added])
 
@@ -243,6 +257,73 @@
     (if (and query (not (empty? query)))
       (query-unifies? db vars query)
       true)))
+
+
+(defn datom-pattern-match [db pattern datom vars queries]
+  (when-let [ret-vars (tx-pattern-match-q? pattern datom)]
+    (let [all-vars (merge vars ret-vars)]
+      (cond
+       (empty? ret-vars) vars
+       (empty? queries) all-vars
+       :else (when (query-unifies? db all-vars queries) all-vars)))))
+
+(datom-pattern-match @conn '[?p :person/name ?name] '[3 :person/name "Bob"]
+                     {'?age 31}
+                     '[[?p :person/age ?age]])
+
+
+(defn datom-match?
+  ([db patterns datom] (datom-match? db patterns datom {} []))
+  ([db patterns datom vars] (datom-match? db patterns datom vars []))
+  ([db patterns datom vars queries]
+     (if (map? patterns)
+       (datom-match? db (first (keys patterns))
+                     datom vars
+                     (vec (concat (first (vals patterns)) queries)))
+       (->>
+        (for [p patterns]
+          (if (map? p)
+            (datom-match? db p datom vars queries)
+            (datom-pattern-match db p datom vars queries)))
+        (remove nil?)
+        first))))
+
+(defn any-datoms-match?
+  ([db patterns datoms] (any-datoms-match? db patterns datoms {} []))
+  ([db patterns datoms vars] (any-datoms-match? db patterns datoms vars []))
+  ([db patterns datoms vars queries]
+     (->>
+      (for [d datoms]
+        (datom-match? db patterns d vars queries))
+      (remove nil?)
+      first)))
+
+;; (datom-match? db patterns d vars queries)
+
+(any-datoms-match? @conn
+                   {['[?p :person/name ?name]
+                     {'[[?p :person/group]]
+                      '[[?p :person/dog "Mojo"]]}]
+                    '[[?p :person/age 30]]}
+                   
+                   '[[3 :person/name "Bob"]
+                     [3 :person/group "Bob"]])
+
+(datom-match? @conn
+              {['[?p :person/name ?name]
+                {'[[?p :person/group]]
+                 '[[?p :person/dog ?dog]]}]
+               '[[?p :person/age 30]]}
+              
+              '[3 :person/group "Bob"]
+
+              {'?dog "Mojo"})
+
+(datom-match? @conn
+              ['[?p :person/name ?name]]
+              '[3 :person/name "Bob"]
+              {}
+              '[[?p :person/age 30]])
 
 (def c "hey")
 

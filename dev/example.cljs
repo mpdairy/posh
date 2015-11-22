@@ -1,6 +1,6 @@
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx when-tx transact!] :as posh]
+            [posh.core :refer [db-tx pull-tx q-tx when-tx transact! posh!] :as posh]
             [datascript.core :as d]))
 
 
@@ -30,20 +30,18 @@
     {:db/id -10 :person/name "Macy" :person/age 4 :person/group (rand-nth groups)}
     {:db/id -11 :person/name "Ojoto" :person/age 20 :person/group (rand-nth groups)}]))
 
-(posh/init! conn)
+(posh! conn)
 
 ;;; TX Listeners
 
-  ;; congratulates anyone who turns 21
+;; congratulates anyone who turns 21
 
 (when-tx conn
          '[[?p :person/age 21 _ true]]
          (fn [[e a v] db]
            (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
 
-
 ;;; Components
-
 
 (defn ents [db ids]
   (map (partial d/entity db) ids))
@@ -88,9 +86,9 @@
      (:dog/name d) " -- " (:dog/status d)
      [:button "Bark Once"
       {:on-click #(transact! conn (->> (for [dog neighborhood-dogs]
-                                        (when (not= (:db/id d) (:db/id dog))
-                                          [:db/add dog :dog/status "barking"]))
-                                      (remove nil?)))}]]))
+                                         (when (not= (:db/id d) (:db/id dog))
+                                           [:db/add dog :dog/status "barking"]))
+                                       (remove nil?)))}]]))
 
 (defn editable [id attr]
   (let [db          (db-tx conn [[id :action/editing attr]])
@@ -104,7 +102,7 @@
                          :value @input-value
                          :onChange #(reset! input-value (-> % .-target .-value))}]
            [:button {:onClick #(transact! conn [[:db/add id attr @input-value]
-                                               [:db/retract id :action/editing attr]])} "Done"]]
+                                                [:db/retract id :action/editing attr]])} "Done"]]
           [:div text
            [:button {:onClick #(transact! conn [[:db/add id :action/editing attr]])} "Edit"]])))))
 
@@ -117,12 +115,53 @@
       {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
       (:person/name p) " -- " (:person/age p)]]))
 
+(defn pull-person [id]
+  (let [p (pull-tx conn [[id]] '[*] id)]
+    (println "Person: " (:person/name @p))
+    [:div
+     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
+     (:person/name @p) ": " (:person/age @p)]))
+
+(comment
+
+  [['_ :person/age]]
+
+  [['_ :person/age old-age _ true]]
+  )
+
+(defn people-younger-than [old-age]
+  (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
+                                              :in $ ?old
+                                              :where
+                                              [?p :person/age ?age]
+                                              [(< ?age ?old)]
+                                              [?p :person/name ?name]]
+                    old-age)]
+    (println "People Younger Than " old-age)
+    [:ul "People younger than 30:"
+     (for [n @young] ^{:key n} [:li n])]))
+
+
+(defn all-people-older-than-birthday-person []
+  (let [older (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
+                    '[:find [?name ...]
+                      :in $ ?birthday-boy ?birthday-age
+                      :where
+                      [?p :person/age ?age]
+                      [(> ?age ?birthday-age)]
+                      [?p :person/name ?name]]
+                    '?birthday-boy
+                    '?birthday-age)]
+    (println "People Older than birthday person ")
+    [:ul "People older than the last birthday person:"
+     (for [n @older] ^{:key n} [:li n])]))
+
 (defn bookshelf [bookshelf-id]
   (let [db    (db-tx conn
-                     [[bookshelf-id]
-                      ['_ :book/bookshelf bookshelf-id]
-                      '[?b :book/name]]
-                     [['?b :book/bookshelf bookshelf-id]])
+                     {[[bookshelf-id]
+                       ['_ :book/bookshelf bookshelf-id]
+                       '[?b :book/name]]
+                      [['?b :book/bookshelf bookshelf-id]]})
         b     (d/entity @db bookshelf-id)
         books (map (partial d/entity @db)
                    (d/q '[:find [?b ...]
@@ -134,28 +173,6 @@
      (for [b (sort-by :book/name books)]
        ^{:key (:db/id b)} [:li (:book/name b)])]))
 
-(comment
-
-  (db-tx conn
-         [[group-id]
-          ['_ :person/group group-id]
-          {['?p person-sortable '_ '_ true]
-           [['?p :person/group group-id]
-            '[?p :person/group ?g]
-            '[?g :group/sort-by ?sort-attr]]}])
-
-  (db-tx conn [[group-id]
-               ['_ :person/group group-id]
-               {'[?p :person/name _ _ true]
-                [['?p :person/group group-id]
-                 '[?p :person/group ?g]
-                 '[?g :group/sort-by :person/name]]}
-               {'[?p :person/age _ _ true]
-                [['?p :person/group group-id]
-                 '[?p :person/group ?g]
-                 '[?g :group/sort-by :person/age]]}])
-
-  )
 
 (def person-sortables [:person/name :person/age :person/height :person/weight])
 
@@ -167,7 +184,7 @@
   (let [db (db-tx conn
                   [[group-id]
                    ['_ :person/group group-id]
-                   {['?p person-sortable '_ '_ true]
+                   {[['?p person-sortable '_ '_ true]]
                     [['?p :person/group group-id]
                      '[?p :person/group ?g]
                      '[?g :group/sort-by ?sort-attr]]}])]
@@ -186,7 +203,8 @@
           [:div (pr-str (map :person/age (sort-by :person/age members)))]
           (->> members
                (sort-by (g :group/sort-by))
-               (map (fn [p] ^{:key p} [:div [person (:db/id p)]])))]]))))
+               (map (fn [p]
+                      ^{:key p} [:div [pull-person (:db/id p)]])))]]))))
 
 (defn groups []
   (let [db (db-tx conn '[[_ :group/name]])]
@@ -202,6 +220,8 @@
 (defn app []
   [:div
    [drunkard-club]
+   [people-younger-than 30]
+   [all-people-older-than-birthday-person]
    [groups]])
 
 
@@ -211,8 +231,3 @@
    (.getElementById js/document "app")))
 
 (start)
-
-
-
-
-  
