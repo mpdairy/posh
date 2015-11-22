@@ -20,7 +20,7 @@ well.
 
 The most obvious step toward efficiency is to update
 components only when there has been a transaction. You probably don't
-want the components to re-render all of them every time something in the db changes,
+want all the components to re-render every time something in the db changes,
 so you have to let the components decide what part of the db they need
 and only update when that changes.
 
