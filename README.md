@@ -56,6 +56,7 @@ Sets up the tx-report listener for a conn.
 ;;; sets up tx report listener for conn
 (posh! conn)
 ```
+You can do it for multiple conn's, though I don't know why you'd want to.
 
 ### db-tx
 
