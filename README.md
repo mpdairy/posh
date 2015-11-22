@@ -13,25 +13,29 @@ large database.
 
 ## Overview
 
-DataScript is a great client-side database that gives great flexibility
+DataScript is a client-side database that gives great flexibility
 for queries and transactions, but using it with a React.js front-end
-is tricky and its difficult to come up with a solution that scales
-well. Of course, the most obvious step toward efficiency is to update
+is tricky and it's difficult to come up with a solution that scales
+well.
+
+The most obvious step toward efficiency is to update
 components only when there has been a transaction. You probably don't
-want to re-render all of them every time something in the db changes,
+want the components to re-render all of them every time something in the db changes,
 so you have to let the components decide what part of the db they need
 and only update when that changes.
 
 One solution is to have the components specify a `q` DataScript query
 or a `pull` request. Every time the database changes, the queries for
 each component are run to see if they need to update. But queries
-aren't totally cheap.
+aren't totally cheap and you might run into problems if you were, say,
+using DataScript to keep track of animation frames and locations for
+multiple objects in a game.
 
-What Posh does is something much cheaper. The components (actually,
+In Posh, the components (actually,
 the `db-tx` functions called from within the components) specify
 datom patterns and match against them in the tx report log to
 determine if the component should be updated, so, i.e. the pattern
-`'[_ :person/cash _]` would update any time a transaction about a
+`'[_ :person/cash _]` would match any time a transaction about a
 person's cash amount occured, which would be useful, say, for a
 component that displays a sum total of all the cash in circulation.
 
