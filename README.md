@@ -1,6 +1,6 @@
 # Posh
 ```clj
-[posh "0.2.2"]
+[posh "0.2.2.2"]
 ```
 Posh is a little library that lets you use a DataScript database to
 keep your application state. All components have access to the
@@ -13,30 +13,44 @@ large database.
 
 ## Overview
 
-In DataScript, the database is changed by submitting datoms, like
-`[:db/add 123 :book/title "Bad Money"]`. The TX report for that
-database would have the datom that looked something like this,
-`[123 :book/title "Bad Money" 555555 true]` where `123` is the entity
-ID, `:book/title` is the attribute, `"Bad Money"` is the value,
-`555555` is the time of the transaction, and `true` is if it was
-added, or `false` if it was retracted.
+DataScript is a great client-side database that gives great flexibility
+for queries and transactions, but using it with a React.js front-end
+is tricky and its difficult to come up with a solution that scales
+well. Of course, the most obvious step toward efficiency is to update
+components only when there has been a transaction. You probably don't
+want to re-render all of them every time something in the db changes,
+so you have to let the components decide what part of the db they need
+and only update when that changes.
 
-## Functions
+One solution is to have the components specify a `q` DataScript query
+or a `pull` request. Every time the database changes, the queries for
+each component are run to see if they need to update. But queries
+aren't totally cheap.
 
-### init!
+What Posh does is something much cheaper. The components (actually,
+the `db-tx` functions called from within the components) specify
+datom patterns and match against them in the tx report log to
+determine if the component should be updated, so, i.e. the pattern
+`'[_ :person/cash _]` would update any time a transaction about a
+person's cash amount occured, which would be useful, say, for a
+component that displays a sum total of all the cash in circulation.
+
+## Operation
+
+### posh!
 
 Sets up the tx-report listener for a conn.
 
 ```clj
 (ns ...
    (:require [reagent.core :as r]
-          [posh.core :refer [db-tx when-tx transact] :as posh]
-          [datascript.core :as d]))
+             [posh.core :refer [posh! db-tx when-tx transact!]]
+             [datascript.core :as d]))
 
 (def conn (d/create-conn))
 
 ;;; sets up tx report listener for conn
-(posh/init! conn)
+(posh! conn)
 ```
 
 ### db-tx
@@ -74,7 +88,7 @@ whenever you click on it.
   (let [db (db-tx conn [[id]])
         p  (d/entity @db id)]
     [:div
-     {:on-click #(transact conn [[:db/add id :person/age (inc (:person/age p))]])}
+     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) " -- " (:person/age p)]))
 ```
      
@@ -294,9 +308,9 @@ patterns or inline as maps, like in `db-tx`.
 You could use `when-tx` to handle events or to trigger communication
 with the server.
 
-### transact
+### transact!
 
-Right now, `transact` just calls `d/transact!`, but maybe in the future
+Right now, `transact!` just calls `d/transact!`, but maybe in the future
 it might have to do some pre-transaction filtering or something, so
 heck you might as well start using it.
 
@@ -322,10 +336,10 @@ the input-box value as the value for the original entity id and attrib.
           [:div [:input {:type "text"
                          :value @input-value
                          :onChange #(reset! input-value (-> % .-target .-value))}]
-           [:button {:onClick #(transact conn [[:db/add id attr @input-value]
+           [:button {:onClick #(transact! conn [[:db/add id attr @input-value]
                                                [:db/retract id :action/editing attr]])} "Done"]]
           [:div text
-           [:button {:onClick #(transact conn [[:db/add id :action/editing attr]])}
+           [:button {:onClick #(transact! conn [[:db/add id :action/editing attr]])}
             "Edit"]])))))
 
 ;; would be called with something like [editable person-id :person/name]
