@@ -13,7 +13,7 @@ large database.
 
 ## Overview
 
-DataScript is a client-side database that gives great flexibility
+DataScript is a Clojure/ClojureScript database that gives great flexibility
 for queries and transactions, but using it with a React.js front-end
 is tricky and it's difficult to come up with a solution that scales
 well.
