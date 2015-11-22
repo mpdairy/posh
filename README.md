@@ -130,7 +130,7 @@ Here are examples of all the ways patterns can match:
   '[[_ :person/name]] ;; or
   [['_ :person/name]]
 
-  ;; tx datoms are [entity attribute value time added?]
+  ;; tx datoms are [entity attribute value tx added?]
   ;; this matches only those persons who just left a group
   ;; since 'false' means it was retracted
   (db-tx conn '[[_ :person/group _ _ false]])
