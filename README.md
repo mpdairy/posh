@@ -108,7 +108,7 @@ won't be run unless it matches the pattern. `pull` just basically runs
 `(pull-tx conn '[[]] ...)` so it tries the pull request every time
 there is any new tx, thus it's more expensive.
 
-Also note that `pull-tx` takes a conn instead of a db value.
+Also note that they take a conn instead of a db value.
 
 They both return a vector containing the db value at the time of the
 pull and the result of the pull request.
@@ -118,8 +118,8 @@ whenever `id` is updated:
 
 ```clj
 (defn person [id]
-  (let [[db p] (pull-tx conn '[[id]] `[*] id)]
-    ...))
+  (let [[db p] (pull-tx conn [[id]] `[*] id)]
+    [:div (:person/name @p)]))
 ```
 
 ### Pattern Matching
