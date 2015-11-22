@@ -66,6 +66,20 @@ to 10 (or gets retracted, like if they turn 11). I know, it's hard to
 believe--it's not even a form-2 component--but it really won't
 re-render until somebody turns 10.
 
+And you can do nice little components that just match on their own
+`:db/id`. This one displays a person and increases its own age
+whenever you click on it.
+```clj
+(defn person [id]
+  (let [db (db-tx conn [[id]])
+        p  (d/entity @db id)]
+    [:div
+     {:on-click #(transact conn [[:db/add id :person/age (inc (:person/age p))]])}
+     (:person/name p) " -- " (:person/age p)]))
+```
+     
+Components can also pretty easily effect eachother.
+
 #### Pattern Matching
 
 The tx pattern matching used in `db-tx` is very powerful. You can
@@ -261,11 +275,13 @@ with any tags you put into `person-sortables`.
           '[?g :group/sort-by ?sort-attr]]}])
 ```
 
-## when-tx
+### when-tx
 
-`(when-tx conn tx-patterns handler-fn)` sets up a listener that watches for a pattern match, then
-calls `(handler-fn matching-tx-datom db-after)`. Right now it can't do queries
-in the pattern match.
+`(when-tx conn tx-patterns [queries (optional)]  handler-fn)` sets up
+a listener that watches for a pattern match, then calls `(handler-fn
+matching-tx-datom db-after)`. It can take a query right after the
+patterns or inline as maps, like in `db-tx`.
+
 
 ```clj
 ;; congratulates anyone who turns 21
@@ -279,13 +295,57 @@ in the pattern match.
 You could use `when-tx` to handle events or to trigger communication
 with the server.
 
-## transact
+### transact
 
 Right now, `transact` just calls `d/transact!`, but maybe in the future
 it might have to do some pre-transaction filtering or something, so
 heck you might as well start using it.
 
-## more later...
+## Advanced Examples
+
+### Mixing with Component Local Variables
+Here's a component that uses an `r/atom` in the outer form to keep
+track of the local state of the input box. The component takes an
+entity id and an attrib, like :person/name or :book/title, and turns
+it into a div with an "edit" button that, when clicked, will turn into
+an input box with a "done" button, which, when clicked, will transact
+the input-box value as the value for the original entity id and attrib.
+
+```clj
+(defn editable [id attr]
+  (let [db          (db-tx conn [[id :action/editing attr]])
+        input-value (r/atom (attr (d/entity @db id)))]
+    (fn [id attr]
+      (let [parent   (d/entity @db id)
+            text     (attr parent)
+            editing? (:action/editing parent)]
+        (if editing?
+          [:div [:input {:type "text"
+                         :value @input-value
+                         :onChange #(reset! input-value (-> % .-target .-value))}]
+           [:button {:onClick #(transact conn [[:db/add id attr @input-value]
+                                               [:db/retract id :action/editing attr]])} "Done"]]
+          [:div text
+           [:button {:onClick #(transact conn [[:db/add id :action/editing attr]])}
+            "Edit"]])))))
+
+;; would be called with something like [editable person-id :person/name]
+```
+
+Alternatively, you could use no local atom and just transact the value
+directly to the db as the user types. Or, best of all, you could update a temporary
+attrib in the db and then set that to equal the original value when
+the editing is finished, so that all state is saved in the db.
+
+### Affecting other Components Properly
+
+Let's say you have a `person` component and you want to have a button
+that will make the person give $1 to every other person in the group.
+So you need your transaction to count the number of people in the
+group (minus the giver) and take that many dollars away from the
+giver. Then it needs to give everything to the 
+
+## More later...
 
 I haven't even looked at how to communicate with the back-end yet.
 Maybe there's some cool, easy way to do it.

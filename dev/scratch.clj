@@ -29,6 +29,9 @@
 
 (def last-tx-report (atom []))
 
+(def schema {:person/group {:db/valueType :db.type/ref}})
+(def conn (d/create-conn schema))
+
 (d/transact! conn
              [{:db/id -1 :group/name "Pine Club" :group/sort-by :person/name}
               {:db/id -2 :group/name "Oak Club" :group/sort-by :person/age}])
@@ -45,6 +48,20 @@
     {:db/id -9 :person/name "Miagianna" :person/age 33 :person/group (rand-nth groups)}
     {:db/id -10 :person/name "Macy" :person/age 4 :person/group (rand-nth groups)}
     {:db/id -11 :person/name "Ojoto" :person/age 20 :person/group (rand-nth groups)}]))
+
+(def bob (d/entity (d/db conn) 3))
+
+
+(def bob-db (d/db conn))
+(:person/name (d/entity bob-db 3))
+(d/transact! conn [[:db/add 3 :person/name "Bobby"]])
+(:person/name (d/entity @conn 3))
+
+(:person/_group (:person/group bob))
+
+
+
+(d/transact! conn [[:db.fn/call ]])
 
 (namespace :jimmy/hogan)
 

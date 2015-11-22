@@ -1,14 +1,17 @@
 (ns example
-  (:require-macros [reagent.ratom :refer [reaction]])
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx when-tx transact] :as posh]
+            [posh.core :refer [db-tx when-tx transact!] :as posh]
             [datascript.core :as d]))
 
 
 (enable-console-print!)
 
 ;;; setup
-(def conn (d/create-conn))
+
+(def schema {:person/group {:db/valueType :db.type/ref}
+             :action/editing {:db/cardinality :db.cardinality/many}})
+
+(def conn (d/create-conn schema))
 
 (d/transact! conn
              [{:db/id -1 :group/name "Pine Club" :group/sort-by :person/name}
@@ -20,7 +23,7 @@
    [{:db/id -3 :person/name "Bob" :person/age 30 :person/group (rand-nth groups)}
     {:db/id -4 :person/name "Sally" :person/age 25 :person/group (rand-nth groups)}
     {:db/id -5 :person/name "Lodock" :person/age 45 :person/group (rand-nth groups)}
-    {:db/id -6 :person/name "Janis" :person/age 22 :person/group (rand-nth groups)}
+    {:db/id -6 :person/name "Janis" :person/age 19 :person/group (rand-nth groups)}
     {:db/id -7 :person/name "Angel-Bad" :person/age 14 :person/group (rand-nth groups)}
     {:db/id -8 :person/name "Shomo" :person/age 16 :person/group (rand-nth groups)}
     {:db/id -9 :person/name "Miagianna" :person/age 33 :person/group (rand-nth groups)}
@@ -34,7 +37,7 @@
   ;; congratulates anyone who turns 21
 
 (when-tx conn
-         '[[_ :person/age 21 _ true]]
+         '[[?p :person/age 21 _ true]]
          (fn [[e a v] db]
            (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
 
@@ -56,66 +59,6 @@
          [:ul
           (for [p drunkards] ^{:key (:db/id p)} [:li (:person/name p)])]]))))
 
-(comment
-
-  (db-tx conn [[]]) ;; matches every tx
-
-  (db-tx conn [[453]]) ;; matches every tx with entity id of 435
-
-  ;; matches to any title changes for this book's id
-  (defn book [id]
-    (let [db (db-tx conn [[id :book/title]])]
-      ...))
-
-  ;; tx datoms are [entity attribute value time added?]
-  ;; this matches only those persons who just join a group
-  (db-tx conn '[[_ :person/group _ _ true]]) ;; remember to quote '
-
-  ;; if you have external variables you'll have to unquote the form
-  ;; and quote each _
-  (let [color "red"]
-    (db-tx conn [['_ :car/color color]]))
-  
-  ;; multiple patterns. If it matches one of them it updates
-  (db-tx conn '[[_ :person/name]
-                [_ :person/age]
-                [_ :person/group]])
-
-  ;; You can use predicate functions in the match.
-  ;; The function will get passed the datom's value
-  
-  ;; this will match any person older than 20
-  (db-tx conn [['_ :person/age #(> % 20)]])
-
-  ;; but it's bad to use anonymous functions in the pattern like this
-  ;; because db-tx memoizes and ClojureScript doesn't know that
-  ;; #(+ 3 %) equals #(+ 3 %) so it gobbles up memory
-
-  ;; So you either need to define your functions or, if you do use
-  ;; anonymous functions, at least do it in the outer binding of
-  ;; a form-2 component.
-
-  ;; same thing, but nice for memoizing
-  (defn >20? [n] (> n 20))
-  (db-tx conn [['_ :person/age >20?]])
-
-  ;; match on any attrib change for a person
-  (defn person-attrib? [a] (= (namespace a) "person"))
-  (db-tx conn [['_ person-attrib?]])
-
-  ;; you can also group together possibilities in a vector.
-
-  ;; matches on the actions "drink" "burp" "sleep"
-  (db-tx conn [['_ :person/action ["drink" "burp" "sleep"]]])
-
-  ;; matches either of two people with id's 123 or 234, if either
-  ;; their name or age changes:
-  (db-tx conn [[[123 234] [:person/name :person/age]]])
-
-  
-
-
-  )
 
 (defn ten-year-olds []
   (let [db   (db-tx conn '[[_ :person/age 10]])
@@ -128,13 +71,51 @@
      (for [k kids]
        ^{:key (:db/id k)} [:li (:person/name k)])]))
 
+(comment
+  (defn person [id]
+    (let [db (db-tx conn [[id]])]
+      (fn [id]
+        (let [p (d/entity @db id)]
+          [:div
+           {:on-click #(transact! conn [[:db/add id :person/age (rand-int 30)]])}
+           (pr-str (d/touch p))])))))
+
+(defn dog [id]
+  (let [db                (db-tx conn [[id]])
+        d                 (d/entity @db id)
+        neighborhood-dogs (:dog/_neighborhood (:dog/neighborhood d))]
+    [:div
+     (:dog/name d) " -- " (:dog/status d)
+     [:button "Bark Once"
+      {:on-click #(transact! conn (->> (for [dog neighborhood-dogs]
+                                        (when (not= (:db/id d) (:db/id dog))
+                                          [:db/add dog :dog/status "barking"]))
+                                      (remove nil?)))}]]))
+
+(defn editable [id attr]
+  (let [db          (db-tx conn [[id :action/editing attr]])
+        input-value (r/atom (attr (d/entity @db id)))]
+    (fn [id attr]
+      (let [parent   (d/entity @db id)
+            text     (attr parent)
+            editing? (:action/editing parent)]
+        (if editing?
+          [:div [:input {:type "text"
+                         :value @input-value
+                         :onChange #(reset! input-value (-> % .-target .-value))}]
+           [:button {:onClick #(transact! conn [[:db/add id attr @input-value]
+                                               [:db/retract id :action/editing attr]])} "Done"]]
+          [:div text
+           [:button {:onClick #(transact! conn [[:db/add id :action/editing attr]])} "Edit"]])))))
+
 (defn person [id]
-  (let [db (db-tx conn [[id]])]
-    (fn [id]
-      (let [p (d/entity @db id)]
-        [:div
-         {:on-click #(transact conn [[:db/add id :person/age (rand-int 30)]])}
-         (pr-str (d/touch p))]))))
+  (let [db (db-tx conn [[id]])
+        p  (d/entity @db id)]
+    [:div
+     [editable id :person/name]
+     [:div
+      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
+      (:person/name p) " -- " (:person/age p)]]))
 
 (defn bookshelf [bookshelf-id]
   (let [db    (db-tx conn

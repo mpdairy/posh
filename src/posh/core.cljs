@@ -5,7 +5,6 @@
             [datascript.core :as d]
             [posh.tx-match :refer [tx-match? tx-patterns-match?]]))
 
-
 (def posh-conn (atom (d/create-conn)))
 
 (def posh-conns (atom {}))
@@ -27,8 +26,14 @@
              (fn [tx-report]
                (do
                  ;;(println (pr-str (:tx-data tx-report)))
-                 (doall (map (partial try-tx-listener tx-report)
-                             @(:tx-listeners (@posh-conns conn))))
+                 (doall
+                  (for [tx-datom (:tx-data tx-report)
+                        listener @(:tx-listeners (@posh-conns conn))]
+                    (try-tx-listener (:db-before tx-report)
+                                     (:db-after tx-report)
+                                     tx-datom listener)))
+                 #_(doall (map (partial try-tx-listener tx-report)
+                               @(:tx-listeners (@posh-conns conn))))
                  (reset! (:last-tx-report (@posh-conns conn)) tx-report)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -37,7 +42,7 @@
 ;; might have to make this something that combines the tx's or adds
 ;; filters or something. For now it's sort of pointless.
 
-(defn transact [conn tx]
+(defn transact! [conn tx]
   (d/transact! conn tx))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -74,11 +79,12 @@
 ;; there were problems with duplicates being loaded when using figwheel
 ;;(reset! tx-listeners (vec (set @tx-listeners)))
 
-(defn try-tx-listener [tx-report [patterns handler-fn]]
-  (when-let [matching-datom
-             (tx-patterns-match? patterns (:tx-data tx-report))]
-    (handler-fn matching-datom (:db-after tx-report))))
+(defn try-tx-listener [db-before db-after tx-datom [patterns query handler-fn]]
+  (if (tx-match? db-before patterns query [tx-datom])
+    (handler-fn tx-datom db-after)))
 
-(defn when-tx [conn patterns handler-fn]
-  (swap! (:tx-listeners (@posh-conns conn)) conj [patterns handler-fn]))
+(defn when-tx
+  ([conn patterns handler-fn] (when-tx conn patterns nil handler-fn))
+  ([conn patterns query handler-fn]
+   (swap! (:tx-listeners (@posh-conns conn)) conj [patterns query handler-fn])))
 
