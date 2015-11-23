@@ -1,7 +1,5 @@
 # Posh
-```clj
-[posh "0.3"]
-```
+
 Posh is a little library that lets you use a DataScript database to
 keep your application state in Reagent.  It can be incorporated with
 your existing Reagent project and mixed with regular Reagent atoms.
@@ -12,6 +10,22 @@ only update when pertinent changes occur.
 This gives your components all the power of DataScript queries,
 entities, pull requests, etc, but it's still very fast, even with a
 large database.
+
+## Installation 
+
+Start a Reagent project and include these dependencies
+
+```clj
+[posh "0.3"]
+[datascript "0.13.3"]
+```
+Require in Reagent app files:
+```clj
+(ns example
+  (:require [reagent.core :as r]
+            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
+            [datascript.core :as d]))
+```
 
 ## Overview
 
