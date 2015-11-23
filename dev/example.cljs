@@ -122,6 +122,21 @@
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
      (:person/name @p) ": " (:person/age @p)]))
 
+(defn person-attr [a]
+  (when (= (namespace a) "person")
+    {'?attr a}))
+
+(defn last-person-changed []
+  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
+    (println "Person changed: " (:person/name @p))
+    (if-not @p
+      [:div "Waiting for someone to change something..."]
+      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
+                             :person/name)]
+        [:div (:person/name @p)
+         " just changed his/her " (name changed-attr)
+         " to " (changed-attr @p)]))))
+
 (comment
 
   [['_ :person/age]]
@@ -225,6 +240,7 @@
    [drunkard-club]
    [people-younger-than 30]
    [all-people-older-than-birthday-person]
+   [last-person-changed]
    [groups]])
 
 
