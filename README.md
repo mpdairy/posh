@@ -136,7 +136,7 @@ an attribute.
 ```
 
 If you're confused about the pattern matching and how the `?attr`
-symbol was set, just wait until you get to the datom matching section.
+symbol was set, just wait and it will be explained in the datom matching section.
 
 ### q-tx
 
