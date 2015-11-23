@@ -112,32 +112,6 @@ whenever `id` is updated and increases its age whenever clicked:
      (:person/name @p) ": " (:person/age @p)]))
 ```
 
-You can use `?` symbols from the datom match as vars in the pull
-pattern or for the entity id.
-
-In the example below, `?p` and `?attr` are set in the datom match and
-are used to pull info about the person who has most recently changed
-an attribute.
-
-```clj
-(defn person-attr [a]
-  (when (= (namespace a) "person")
-    {'?attr a}))
-
-(defn last-person-changed []
-  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
-    (if-not @p
-      [:div "Waiting for someone to change something..."]
-      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
-                             :person/name)]
-        [:div (:person/name @p)
-         " just changed his/her " (name changed-attr)
-         " to " (changed-attr @p)]))))
-```
-
-If you're confused about the pattern matching and how the `?attr`
-symbol was set, just wait and it will be explained in the datom matching section.
-
 ### q-tx
 
 `(q-tx [conn] [tx pattern] [query] & args)`
@@ -166,32 +140,6 @@ someone's age changes::
     [:ul "People younger than 30:"
      (for [n @young] ^{:key n} [:li n])]))
 ```
-
-You can also set variables in the datom pattern match and use them in
-the query. In the next example, the values of `?birthday-boy` and
-`?birthday-age` from the pattern match are used as args to the query.
-
-```clj
-(defn all-people-older-than-birthday-person []
-  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
-                    '[:find ?birthday-name ?name
-                      :in $ ?birthday-boy ?birthday-age
-                      :where
-                      [?p :person/age ?age]
-                      [(> ?age ?birthday-age)]
-                      [?p :person/name ?name]
-                      [?birthday-boy :person/name ?birthday-name]]
-                    '?birthday-boy
-                    '?birthday-age)]
-    (if (empty? @r)
-      [:div "Waiting for a birthday..."]
-      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
-       (for [n (map second @r)] ^{:key n} [:li n])])))
-```
-
-If you put any variable symbols in the `args` (symbols starting with a
-`?`), the query will return an empty set on its very first load and won't change
-until a datom is matched from the tx report.
 
 ### when-tx!
 
@@ -498,6 +446,66 @@ Alternatively, you could use no local atom and just transact the value
 directly to the db as the user types. Or, best of all, you could update a temporary
 attrib in the db and then set that to equal the original value when
 the editing is finished, so that all state is saved in the db.
+
+### Using ?variables from the Datom Match
+
+This is not really recommended because it ruins the purity of the state.
+
+#### pull-tx ?var sharing
+
+You can use `?` symbols from the datom match as vars in the pull
+pattern or for the entity id.
+
+In the example below, `?p` and `?attr` are set in the datom match and
+are used to pull info about the person who has most recently changed
+an attribute.
+
+```clj
+(defn person-attr [a]
+  (when (= (namespace a) "person")
+    {'?attr a}))
+
+(defn last-person-changed []
+  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
+    (if-not @p
+      [:div "Waiting for someone to change something..."]
+      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
+                             :person/name)]
+        [:div (:person/name @p)
+         " just changed his/her " (name changed-attr)
+         " to " (changed-attr @p)]))))
+```
+
+If you're confused about the pattern matching and how the `?attr`
+symbol was set, just wait and it will be explained in the datom matching section.
+
+#### q-tx ?var sharing
+
+You can also set variables in the datom pattern match and use them in
+the query. In the next example, the values of `?birthday-boy` and
+`?birthday-age` from the pattern match are used as args to the query.
+
+```clj
+(defn all-people-older-than-birthday-person []
+  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
+                    '[:find ?birthday-name ?name
+                      :in $ ?birthday-boy ?birthday-age
+                      :where
+                      [?p :person/age ?age]
+                      [(> ?age ?birthday-age)]
+                      [?p :person/name ?name]
+                      [?birthday-boy :person/name ?birthday-name]]
+                    '?birthday-boy
+                    '?birthday-age)]
+    (if (empty? @r)
+      [:div "Waiting for a birthday..."]
+      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
+       (for [n (map second @r)] ^{:key n} [:li n])])))
+```
+
+If you put any variable symbols in the `args` (symbols starting with a
+`?`), the query will return an empty set on its very first load and won't change
+until a datom is matched from the tx report.
 
 ## More later...
 
