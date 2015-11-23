@@ -11,7 +11,7 @@ This gives your components all the power of DataScript queries,
 entities, pull requests, etc, but it's still very fast, even with a
 large database.
 
-## Installation 
+## Usage
 
 Start a Reagent project and include these dependencies
 
