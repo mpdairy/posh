@@ -4,7 +4,7 @@
             [reagent.core :as r]
             [datascript.core :as d]
             [posh.tx-match :refer [tx-match? tx-patterns-match?]]
-            [posh.datom-match :refer [datom-match? any-datoms-match?]]))
+            [posh.datom-match :refer [datom-match? any-datoms-match? query-symbol?]]))
 
 (def posh-conn (atom (d/create-conn)))
 
@@ -90,7 +90,9 @@
   (if-let [r (@established-reactions [:q-tx conn patterns query args])]
     r
     (let [new-reaction
-          (let [saved-q    (atom (build-query (d/db conn) query args))]
+          (let [saved-q    (atom (if (empty? (filter query-symbol? args))
+                                   (build-query (d/db conn) query args)
+                                   #{}))]
             (reaction
              (if-let [vars (any-datoms-match? (:db-before @(:last-tx-report (@posh-conns conn)))
                                               patterns

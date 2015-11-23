@@ -143,18 +143,21 @@
 
 
 (defn all-people-older-than-birthday-person []
-  (let [older (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
-                    '[:find [?name ...]
+  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
+                    '[:find ?birthday-name ?name
                       :in $ ?birthday-boy ?birthday-age
                       :where
                       [?p :person/age ?age]
                       [(> ?age ?birthday-age)]
-                      [?p :person/name ?name]]
+                      [?p :person/name ?name]
+                      [?birthday-boy :person/name ?birthday-name]]
                     '?birthday-boy
                     '?birthday-age)]
     (println "People Older than birthday person ")
-    [:ul "People older than the last birthday person:"
-     (for [n @older] ^{:key n} [:li n])]))
+    (if (empty? @r)
+      [:div "Wiating for a birthday..."]
+      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
+       (for [n (map second @r)] ^{:key n} [:li n])])))
 
 (defn bookshelf [bookshelf-id]
   (let [db    (db-tx conn

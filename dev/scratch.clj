@@ -70,12 +70,19 @@
 
 (namespace :jimmy/hogan)
 
-(d/q '[:find [?p]
+(let [tups [[1 :a] [2 :b] [3 :c] [4 :d]]]
+  (for [a tups]
+    (second a)))
+
+
+
+
+(d/q '[:find ?p2 ?p
        :where
-       [?p :person/name "Bob"]
-       [?p :person/group 1]
-       [?p :person/group ?g]
-       [?g :group/sort-by :person/name]]
+       [?p :person/age ?age]
+       [?p2 :person/name "Bob"]
+       [?p :person/name ?name]
+       [(< ?age 0)]]
      @conn)
 
 
