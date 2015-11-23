@@ -151,7 +151,8 @@ By default, the database at the time of the transaction is implicitly
 passed in as the first arg.
 
 Below is an example of a component that shows a list of people's names
-who are younger than a certain age:
+who are younger than a certain age. It only attempts the query when
+someone's age changes::
 
 ```clj
 (defn people-younger-than [old-age]
