@@ -3,21 +3,24 @@
 [posh "0.3"]
 ```
 Posh is a little library that lets you use a DataScript database to
-keep your application state. All components have access to the
+keep your application state in Reagent.  It can be incorporated with
+your existing Reagent project and mixed with regular Reagent atoms.
+Using Posh, components can have access to the
 complete database, but watch the database's transaction report and
 only update when pertinent changes occur.
 
 This gives your components all the power of DataScript queries,
-entities, pull requests, etc, but is still very fast, even with a
+entities, pull requests, etc, but it's still very fast, even with a
 large database.
 
 ## Overview
 
-Posh gives you three functions to retrieve data from within components: `db-tx`,
+Posh gives you three functions to retrieve data from the database from
+within Reagent components: `db-tx`,
 `pull-tx`, and `q-tx`. They watch the database's transaction report
-and only update when one of the transacted datoms matches the
+and only update (re-render) when one of the transacted datoms matches the
 specified pattern. The datom pattern matcher is very powerful and is
-explained below the overview.
+explained below this overview of functions.
 
 ### posh!
 
@@ -149,18 +152,47 @@ If you put any variable symbols in the `args` (symbols starting with a
 `?`), the query will return an empty set on load and won't change
 until a datom is matched from the tx report.
 
+### when-tx!
+
+`(when-tx conn tx-patterns [queries (optional)]  handler-fn)` sets up
+a listener that watches for a pattern match, then calls `(handler-fn
+matching-tx-datom db-after)`. It can take a query right after the
+patterns or inline as maps, like in `db-tx`.
+
+
+```clj
+;; congratulates anyone who turns 21
+(when-tx conn
+         '[[_ :person/age 21 _ true]]
+         (fn [[e a v] db]
+           (js/alert (str "You have come of age, "
+                          (:person/name (d/entity db e)) "."))))
+```
+
+You could use `when-tx` to handle events or to trigger communication
+with the server.
+
+### transact!
+
+Right now, `transact!` just calls `d/transact!`, but maybe in the future
+it might have to do some pre-transaction filtering or something, so
+heck you might as well start using it.
 
 ### Pattern Matching
-#### Tx Datoms
 
-The tx pattern matching used in `db-tx` is very powerful. You can
-match on any attribute, use wildcards, and even throw in some side
-queries so that your component doesn't update unless it really needs to.
-Here are examples of all the ways patterns can match:
+The datom pattern matcher is used to find if any pertinant datoms have
+been transacted in the database. The pattern can either be a
+list of patterns or a tuple of a list of patterns and a query.
+
+#### Datom Matching
+
+Here are examples of all the ways patterns can match. The
+examples use `db-tx`, though `pull-tx`, `q-tx`, and `when-tx!` use the
+same pattern matching.
 
 ```clj
 
-  ;; db-tx takes a list of multiple patterns
+  ;; The matcher takes a list of possible patterns
   ;; each pattern is tried until one is true
 
   ;; a pattern can be shorter than the tx report datom
@@ -205,12 +237,12 @@ Here are examples of all the ways patterns can match:
   (db-tx conn '[[_ :person/age #(> % 20)]])
 
   ;; but it's bad to use anonymous functions in the pattern like this
-  ;; because db-tx memoizes and ClojureScript doesn't know that
+  ;; because db-tx, pull-tx, and q-tx memoize and ClojureScript doesn't know that
   ;; #(> % 20) equals #(> % 20) so it gobbles up memory
 
   ;; So you either need to define your functions or, if you do use
-  ;; anonymous functions, at least put `db-tx` in the outer binding of
-  ;; a form-2 component.
+  ;; anonymous functions, at least put db-tx, pull-tx, or q-tx in the
+  ;; outer binding of  a form-2 component so it only loads onces.
 
   ;; same thing, but nice for memoizing
   (defn >20? [n] (> n 20))
@@ -238,7 +270,7 @@ information. For example, suppose we have a bookshelf component that
 prints out the names of all its books in alphabetical order. You'd want
 to listen for any changes to the bookshelf itself (like its own name)
 and you want to know when the title of any of the books changes so you
-can re-sort the shelf. Here's a less efficient example:
+can re-sort the shelf. Here's an example:
 
 ```clj
 (defn bookshelf [bookshelf-id]
@@ -269,34 +301,34 @@ that aren't even on its bookshelf. If we had a hundred
 bookshelves, changing the name of one book would cause them all the
 re-render--not good!
 
-To fix this, you can insert a query as a third argument to `db-tx` and
-see if the query unifies with variables it pulls from your pattern.
+To fix this, you can specify a query alongside your pattern matching.
+Just put the query in a map with the patterns as key.
 For example:
 
 ```clj
-(db-tx conn [[bookshelf-id]
-             ['_ :book/bookshelf bookshelf-id]
-             '[?b :book/name]]
-            [['?b :book/bookshelf bookshelf-id]])
+(db-tx conn {[[bookshelf-id]
+              ['_ :book/bookshelf bookshelf-id]
+              '[?b :book/name]]
+             [['?b :book/bookshelf bookshelf-id]]})
 ```
 
-This grabs the `?b` from the last pattern (if the rest of the pattern
-matches first) and it runs the query below to see if the book is part of
+This grabs the `?b` from the last pattern (if the rest of the pattern `:book/name`
+matches first) and it runs the query to see if the book is part of
 the bookshelf. You can do anything you could normally do in a regular
 DataScript `q` query, even functions like:
 
 ```clj
-(db-tx conn '[[?p :person/action :drinking]]
-            '[[?p :person/age ?a]
-              [(< ?a 21)]])
+(db-tx conn {'[[?p :person/action :drinking]]
+             '[[?p :person/age ?a]
+               [(< ?a 21)]]})             
 ```
-which matches to any minors who are drinking.
+which matches to any underaged drinkers.
 
 You can match as many variables as you'd like, but the query only gets
-run with the first matching pattern that returns vars. This is
-somewhat limiting, so if you need more variety you can also pair
-individual patterns with their own queries by pairing them in a map in
-the pattern list.
+run with the first matching pattern that returns vars.
+
+The pattern matcher is recursive, so you can pair queries with any
+datom pattern in the list.
 
 Suppose we have a `group` that sorts people either by name or by age.
 Let's say we are pretty thorough and only want to re-render the
@@ -306,16 +338,16 @@ age changes and it's sorting by name, etc. You could do it this way:
 
 ```clj
 (db-tx conn
-       [[group-id]
-        ['_ :person/group group-id]
-        {'[?p :person/name _ _ true]
-         [['?p :person/group group-id]
-          '[?p :person/group ?g]
-          '[?g :group/sort-by :person/name]]}
-        {'[?p :person/age _ _ true]
-         [['?p :person/group group-id]
-          '[?p :person/group ?g]
-          '[?g :group/sort-by :person/age]]}])
+    [[group-id]
+     ['_ :person/group group-id]
+     {'[[?p :person/name _ _ true]]
+      [['?p :person/group group-id]
+       '[?p :person/group ?g]
+       '[?g :group/sort-by :person/name]]}
+     {'[[?p :person/age _ _ true]]
+      [['?p :person/group group-id]
+       '[?p :person/group ?g]
+       '[?g :group/sort-by :person/age]]}])
 ```
 That's pretty verbose. Of course, you can generate the matching patterns and queries
 programatically.
@@ -325,9 +357,25 @@ programatically.
 can unify with `'[?g :group/sort-by :person/name]`. You can't just do
 `[group-name :group/sort-by :person/name]` or it will always be true.)
 
+If you have nested queries, the parent queries get concatenated onto
+the children queries. Below is the same query as above:
+
+```clj
+(db-tx conn
+       [[group-id]
+        ['_ :person/group group-id]
+        {[{'[[?p :person/age _ _ true]]
+           '[[?g :group/sort-by :person/age]]}
+          {'[[?p :person/age _ _ true]]
+           '[[?g :group/sort-by :person/age]]}]
+         '[[?p :person/group ?g]]}])
+```
+
 Another weird thing you can do is use a function to return a variable
 or set of variables that can then be used to bind to a query. Just put
-them in a map. This does the same thing as above, except it will work
+them in a map.
+
+The solution below does the same thing as both above, except it will work
 with any tags you put into `person-sortables`.
 
 ```clj
@@ -345,32 +393,6 @@ with any tags you put into `person-sortables`.
           '[?p :person/group ?g]
           '[?g :group/sort-by ?sort-attr]]}])
 ```
-
-### when-tx
-
-`(when-tx conn tx-patterns [queries (optional)]  handler-fn)` sets up
-a listener that watches for a pattern match, then calls `(handler-fn
-matching-tx-datom db-after)`. It can take a query right after the
-patterns or inline as maps, like in `db-tx`.
-
-
-```clj
-;; congratulates anyone who turns 21
-(when-tx conn
-         '[[_ :person/age 21 _ true]]
-         (fn [[e a v] db]
-           (js/alert (str "You have come of age, "
-                          (:person/name (d/entity db e)) "."))))
-```
-
-You could use `when-tx` to handle events or to trigger communication
-with the server.
-
-### transact!
-
-Right now, `transact!` just calls `d/transact!`, but maybe in the future
-it might have to do some pre-transaction filtering or something, so
-heck you might as well start using it.
 
 ## Advanced Examples
 
