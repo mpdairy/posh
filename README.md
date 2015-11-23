@@ -447,11 +447,18 @@ directly to the db as the user types. Or, best of all, you could update a tempor
 attrib in the db and then set that to equal the original value when
 the editing is finished, so that all state is saved in the db.
 
-### Using ?variables from the Datom Match
+### Using `?variables` from the Datom Match
 
-This is not really recommended because it ruins the purity of the state.
+This is not really recommended because it ruins the purity of the
+state.
 
-#### pull-tx ?var sharing
+In `pull-tx` and `q-tx` you can set variables in the datom
+match and use the values for them in the query or pull.
+
+You should never do it though and I'll probably remove this feature so
+that nobody is tempted.
+
+#### pull-tx
 
 You can use `?` symbols from the datom match as vars in the pull
 pattern or for the entity id.
@@ -476,13 +483,14 @@ an attribute.
          " to " (changed-attr @p)]))))
 ```
 
-If you're confused about the pattern matching and how the `?attr`
-symbol was set, just wait and it will be explained in the datom matching section.
+The problem with this is that when you reload the app, nothing will
+appear until something is new is transacted. It would be better to query for
+the last changed person or to set up a `when-tx!` that updates some
+var in the db that points to the last changed person.
 
-#### q-tx ?var sharing
+#### q-tx
 
-You can also set variables in the datom pattern match and use them in
-the query. In the next example, the values of `?birthday-boy` and
+In the next example, the values of `?birthday-boy` and
 `?birthday-age` from the pattern match are used as args to the query.
 
 ```clj
@@ -506,6 +514,8 @@ the query. In the next example, the values of `?birthday-boy` and
 If you put any variable symbols in the `args` (symbols starting with a
 `?`), the query will return an empty set on its very first load and won't change
 until a datom is matched from the tx report.
+
+This also is just a lame trick and probably no use.
 
 ## More later...
 
