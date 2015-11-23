@@ -483,7 +483,7 @@ an attribute.
 The problem with this is that when you reload the app, nothing will
 appear until something is new is transacted. It would be better to query for
 the last changed person or to set up a `when-tx!` that updates some
-var in the db that points to the last changed person.
+entry in the db that points to the last changed person.
 
 #### q-tx
 
@@ -516,7 +516,7 @@ This also is just a lame trick and probably no use.
 
 ## More later...
 
-I haven't even looked at how to communicate with the back-end yet.
+I haven't looked at how to communicate with the back-end yet.
 Maybe there's some cool, easy way to do it.
 
 ## License
