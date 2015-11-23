@@ -379,12 +379,21 @@ the children queries. Below is the same query as above:
         ['_ :person/group group-id]
         {[{'[[?p :person/age _ _ true]]
            '[[?g :group/sort-by :person/age]]}
-          {'[[?p :person/age _ _ true]]
-           '[[?g :group/sort-by :person/age]]}]
+          {'[[?p :person/name _ _ true]]
+           '[[?g :group/sort-by :person/name]]}]
          '[[?p :person/group ?g]]}])
 ```
+`[[?p :person/group ?g]]` is a parent query so it gets appended to
+the children query. Let's say the datom is `[123 :person/name "Jim"]`.
+It won't match with `[group-id]` or with `['_ :person/group group-id]`
+so it will move onto the next pattern, which is a map, so it will grab
+the query `'[[?p :person/group ?g]]` and check the list of patterns,
+which are themselves query maps. It will fail to match
+`'[[?p :person/age _ _ true]]` so it will ignore the corresponding
+query. It will finally match `'[[?p :person/name _ _ true]]` and
+combine the parent and children queries and run `d/q`.
 
-Another weird thing you can do is use a function to return a variable
+Another thing you can do is use a function to return a variable
 or set of variables that can then be used to bind to a query. Just put
 them in a map.
 
