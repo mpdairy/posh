@@ -38,7 +38,7 @@ explained below this overview of functions.
 
 ### posh!
 
-`(posh! [conn])`
+`(posh! [DataScript conn])`
 
 Sets up the tx-report listener for a conn.
 
