@@ -13,47 +13,26 @@ large database.
 
 ## Overview
 
-DataScript is a Clojure/ClojureScript database that gives great flexibility
-for queries and transactions, but using it with a React.js front-end
-is tricky and it's difficult to come up with a solution that scales
-well.
-
-The most obvious step toward efficiency is to update
-components only when there has been a transaction. You probably don't
-want all the components to re-render every time something in the db changes,
-so you have to let the components decide what part of the db they need
-and only update when that changes.
-
-One solution is to have the components specify a `q` DataScript query
-or a `pull` request. Every time the database changes, the queries for
-each component are run to see if they need to update. But queries
-aren't totally cheap and you might run into problems if you were, say,
-using DataScript to keep track of animation frames and locations for
-multiple objects in a game.
-
-In Posh, the components (actually,
-the `db-tx` functions called from within the components) specify
-datom patterns and match against them in the tx report log to
-determine if the component should be updated, so, i.e. the pattern
-`'[_ :person/cash _]` would match any time a transaction about a
-person's cash amount occured, which would be useful, say, for a
-component that displays a sum total of all the cash in circulation.
-
-## Operation
+Posh gives you three functions to retrieve data from within components: `db-tx`,
+`pull-tx`, and `q-tx`. They watch the database's transaction report
+and only update when one of the transacted datoms matches the
+specified pattern. The datom pattern matcher is very powerful and is
+explained below the overview.
 
 ### posh!
+
+`(posh! [conn])`
 
 Sets up the tx-report listener for a conn.
 
 ```clj
 (ns ...
    (:require [reagent.core :as r]
-             [posh.core :refer [posh! db-tx when-tx transact!]]
+             [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
              [datascript.core :as d]))
 
 (def conn (d/create-conn))
 
-;;; sets up tx report listener for conn
 (posh! conn)
 ```
 You can do it for multiple conn's, though I don't know why you'd want to.
@@ -66,7 +45,9 @@ You can do it for multiple conn's, though I don't know why you'd want to.
 database after a match. The hosting Reagent component won't update
 with a new db until there is a pattern match.
 
-This example displays a list of people who are ten years old:
+This example displays a list of people who are ten years old. The
+component will only update when someone's age is set to 10 or changed
+from 10 (retracted).
 
 ```clj
 (defn ten-year-olds []
@@ -82,7 +63,7 @@ This example displays a list of people who are ten years old:
 ```
 
 The example below displays a person and increases its own age
-whenever clicked. It only updates when a datom with its own
+whenever clicked. It only re-renders when a datom with its own
 entity id is transacted.
 
 ```clj
