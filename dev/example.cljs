@@ -1,6 +1,6 @@
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx pull-tx q-tx when-tx transact! posh!] :as posh]
+            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!] :as posh]
             [datascript.core :as d]))
 
 
@@ -36,10 +36,10 @@
 
 ;; congratulates anyone who turns 21
 
-(when-tx conn
-         '[[?p :person/age 21 _ true]]
-         (fn [[e a v] db]
-           (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
+(when-tx! conn
+          '[[?p :person/age 21 _ true]]
+          (fn [[e a v] db]
+            (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
 
 ;;; Components
 

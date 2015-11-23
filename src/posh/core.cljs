@@ -118,6 +118,6 @@
   (if (datom-match? db-before patterns tx-datom)
     (handler-fn tx-datom db-after)))
 
-(defn when-tx [conn patterns handler-fn]
+(defn when-tx! [conn patterns handler-fn]
   (swap! (:tx-listeners (@posh-conns conn)) conj [patterns handler-fn]))
 
