@@ -8,7 +8,7 @@ complete database, but watch the database's transaction report and
 only update when pertinent changes occur.
 
 This gives your components all the power of DataScript queries,
-entities, pull requests, etc, but it's still very fast, even with a
+entities, pull syntax, etc, but it's still very fast, even with a
 large database.
 
 ## Usage
@@ -111,6 +111,9 @@ whenever `id` is updated and increases its age whenever clicked:
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
      (:person/name @p) ": " (:person/age @p)]))
 ```
+
+Todo: make it so you can use `?` symbols from the datom match as vars
+in the pull pattern or for the entity id.
 
 ### q-tx
 
