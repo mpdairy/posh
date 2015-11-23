@@ -168,7 +168,7 @@ until a datom is matched from the tx report.
 
 ### when-tx!
 
-`(when-tx! conn tx-patterns [queries (optional)]  handler-fn)`
+`(when-tx! conn [tx patterns]  handler-fn)`
 
 `when-tx!` sets up a listener that watches for a transaction pattern match, then
 calls `(handler-fn matching-tx-datom db-after)`.
