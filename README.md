@@ -98,10 +98,10 @@ entity id is transacted.
 
 `pull-tx` is just like DataScript's pull but it will only pull when
 the datom pattern matches a tx in the tx report. It remembers the last
-pull and only updates the hosting component if they are different.
+pull and only updates the hosting component if the new pull is different.
 
 An example, that pulls all of the info from the entity with `id`
-whenever `id` is updated and increases the age whenever clicked:
+whenever `id` is updated and increases its age whenever clicked:
 
 ```clj
 (defn pull-person [id]
@@ -163,19 +163,18 @@ the query. In the next example, the values of `?birthday-boy` and
 ```
 
 If you put any variable symbols in the `args` (symbols starting with a
-`?`), the query will return an empty set on load and won't change
+`?`), the query will return an empty set on its very first load and won't change
 until a datom is matched from the tx report.
 
 ### when-tx!
 
-`(when-tx conn tx-patterns [queries (optional)]  handler-fn)` sets up
-a listener that watches for a pattern match, then calls `(handler-fn
-matching-tx-datom db-after)`. It can take a query right after the
-patterns or inline as maps, like in `db-tx`.
+`(when-tx! conn tx-patterns [queries (optional)]  handler-fn)`
 
+`when-tx!` sets up a listener that watches for a transaction pattern match, then
+calls `(handler-fn matching-tx-datom db-after)`.
 
 ```clj
-;; congratulates anyone who turns 21
+;; congratulates any one who turns 21
 (when-tx conn
          '[[_ :person/age 21 _ true]]
          (fn [[e a v] db]
@@ -183,7 +182,7 @@ patterns or inline as maps, like in `db-tx`.
                           (:person/name (d/entity db e)) "."))))
 ```
 
-You could use `when-tx` to handle events or to trigger communication
+You could use `when-tx!` to handle events or to trigger communication
 with the server.
 
 ### transact!
@@ -192,13 +191,13 @@ Right now, `transact!` just calls `d/transact!`, but maybe in the future
 it might have to do some pre-transaction filtering or something, so
 heck you might as well start using it.
 
-### Pattern Matching
+## Pattern Matching
 
 The datom pattern matcher is used to find if any pertinant datoms have
 been transacted in the database. The pattern can either be a
 list of patterns or a tuple of a list of patterns and a query.
 
-#### Datom Matching
+### Datom Matching
 
 Here are examples of all the ways patterns can match. The
 examples use `db-tx`, though `pull-tx`, `q-tx`, and `when-tx!` use the
@@ -277,7 +276,7 @@ same pattern matching.
   (db-tx conn [[[123 234] [:person/name :person/age]]])
 ```
 
-#### Query Matching
+### Query Matching
 
 In some cases you might want to do a little querying to get some extra
 information. For example, suppose we have a bookshelf component that
