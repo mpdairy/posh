@@ -135,6 +135,9 @@ an attribute.
          " to " (changed-attr @p)]))))
 ```
 
+If you're confused about the pattern matching and how the `?attr`
+symbol was set, just wait until you get to the datom matching section.
+
 ### q-tx
 
 `(q-tx [conn] [tx pattern] [query] & args)`
