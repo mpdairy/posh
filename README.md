@@ -460,9 +460,6 @@ that nobody is tempted.
 
 #### pull-tx
 
-You can use `?` symbols from the datom match as vars in the pull
-pattern or for the entity id.
-
 In the example below, `?p` and `?attr` are set in the datom match and
 are used to pull info about the person who has most recently changed
 an attribute.
