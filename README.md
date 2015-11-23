@@ -16,7 +16,7 @@ large database.
 Start a Reagent project and include these dependencies
 
 ```clj
-[posh "0.3"]
+[posh "0.3.1"]
 [datascript "0.13.3"]
 ```
 Require in Reagent app files:
@@ -112,8 +112,28 @@ whenever `id` is updated and increases its age whenever clicked:
      (:person/name @p) ": " (:person/age @p)]))
 ```
 
-Todo: make it so you can use `?` symbols from the datom match as vars
-in the pull pattern or for the entity id.
+You can use `?` symbols from the datom match as vars in the pull
+pattern or for the entity id.
+
+In the example below, `?p` and `?attr` are set in the datom match and
+are used to pull info about the person who has most recently changed
+an attribute.
+
+```clj
+(defn person-attr [a]
+  (when (= (namespace a) "person")
+    {'?attr a}))
+
+(defn last-person-changed []
+  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
+    (if-not @p
+      [:div "Waiting for someone to change something..."]
+      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
+                             :person/name)]
+        [:div (:person/name @p)
+         " just changed his/her " (name changed-attr)
+         " to " (changed-attr @p)]))))
+```
 
 ### q-tx
 

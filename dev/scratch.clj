@@ -316,6 +316,16 @@
                    '[[3 :person/name "Bob"]
                      [3 :person/group "Bob"]])
 
+
+(db-tx conn
+       [[group-id]
+        ['_ :person/group group-id]
+        {[{'[[?p :person/age _ _ true]]
+           '[[?g :group/sort-by :person/age]]}
+          {'[[?p :person/age _ _ true]]
+           '[[?g :group/sort-by :person/age]]}]
+         '[[?p :person/group ?g]]}])
+
 (datom-match? @conn
               {['[?p :person/name ?name]
                 {'[[?p :person/group]]
@@ -331,6 +341,53 @@
               '[3 :person/name "Bob"]
               {}
               '[[?p :person/age 30]])
+
+(defn replace-if-query-symbol [vars x]
+  (or (when (query-symbol? x) (vars x)) x))
+
+
+(defn deep-map [f x]
+  (cond
+   (map? x) (let [r (map (partial deep-map f) x)]
+              (zipmap (map first r) (map second r)))
+   (coll? x) (vec (map (partial deep-map f) x))
+   :else (f x)))
+
+(defn deep-find [f x]
+  (if (coll? x)
+    (if (empty? x)
+      false
+      (or (deep-find f (first x))
+           (deep-find f (rest x))))
+    (f x)))
+
+(deep-find query-symbol? '[1 2 3 4 [{:jim "hey" :bob [?a]}]])
+
+(defn build-pull [db pull-syntax entity vars]
+  (d/pull db
+          (if (empty? vars)
+            pull-syntax
+            (deep-map #(or (vars %) %) pull-syntax))
+          (or (vars entity) entity)))
+
+
+(let [vars {}
+      pull-syntax '[:person/name ]]
+  (deep-map #(or (vars %) %) pull-syntax))
+
+(build-pull @conn '[:person/name ?a] '?p {'?p 344 '?a :person/dog})
+
+(namespace :person/jim)
+
+
+(deep-map #(or ({:hey 3333} %) %)
+          [5 {:a 1 :hey 2 :c :hey} [:look :hey {[:hey 34] 8}]])
+
+(let [r (deep-map #(= % :a) {:a 1})]
+  (map first r))
+
+
+(vals (vec {:hey [1 2 3] :jim [[1] [2] [3]]}))
 
 (def c "hey")
 

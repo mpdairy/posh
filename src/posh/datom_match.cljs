@@ -49,7 +49,7 @@
      (if (map? patterns)
        (datom-match? db (first (keys patterns))
                      datom vars
-                     (vec (concat (first (vals patterns)) queries)))
+                     (vec (concat queries (first (vals patterns)))))
        (->>
         (for [p patterns]
           (if (map? p)

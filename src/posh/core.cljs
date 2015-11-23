@@ -3,7 +3,6 @@
   (:require [goog.dom :as gdom]
             [reagent.core :as r]
             [datascript.core :as d]
-            [posh.tx-match :refer [tx-match? tx-patterns-match?]]
             [posh.datom-match :refer [datom-match? any-datoms-match? query-symbol?]]))
 
 (def posh-conn (atom (d/create-conn)))
@@ -63,17 +62,42 @@
              {[:db-tx conn patterns] new-reaction})
       new-reaction)))
 
+(defn deep-find [f x]
+  (if (coll? x)
+    (if (empty? x)
+      false
+      (or (deep-find f (first x))
+           (deep-find f (rest x))))
+    (f x)))
+
+(defn deep-map [f x]
+  (cond
+   (map? x) (let [r (map (partial deep-map f) x)]
+              (zipmap (map first r) (map second r)))
+   (coll? x) (vec (map (partial deep-map f) x))
+   :else (f x)))
+
+(defn build-pull [db pull-syntax entity vars]
+  (d/pull db
+          (if (empty? vars)
+            pull-syntax
+            (deep-map #(or (vars %) %) pull-syntax))
+          (or (vars entity) entity)))
+
 (defn pull-tx [conn patterns pull-pattern entity-id]
   (if-let [r (@established-reactions [:pull-tx conn patterns pull-pattern entity-id])]
     r
     (let [new-reaction
-          (let [saved-pull (atom (d/pull (d/db conn) pull-pattern entity-id))]
+          (let [saved-pull (atom (when (not (or (query-symbol? entity-id)
+                                                (deep-find query-symbol? pull-pattern)))
+                                   (d/pull (d/db conn) pull-pattern entity-id)))]
             (reaction
-             (if (any-datoms-match? (:db-before @(:last-tx-report (@posh-conns conn)))
-                                    patterns
-                                    (:tx-data @(:last-tx-report (@posh-conns conn))))
-               (let [new-pull (d/pull (:db-after @(:last-tx-report (@posh-conns conn)))
-                                      pull-pattern entity-id)]
+             (if-let [vars (any-datoms-match?
+                            (:db-before @(:last-tx-report (@posh-conns conn)))
+                            patterns
+                            (:tx-data @(:last-tx-report (@posh-conns conn))))]
+               (let [new-pull (build-pull (:db-after @(:last-tx-report (@posh-conns conn)))
+                                      pull-pattern entity-id vars)]
                  (if (not= @saved-pull new-pull)
                    (reset! saved-pull new-pull)
                    @saved-pull))
@@ -94,9 +118,10 @@
                                    (build-query (d/db conn) query args)
                                    #{}))]
             (reaction
-             (if-let [vars (any-datoms-match? (:db-before @(:last-tx-report (@posh-conns conn)))
-                                              patterns
-                                              (:tx-data @(:last-tx-report (@posh-conns conn))))]
+             (if-let [vars (any-datoms-match?
+                            (:db-before @(:last-tx-report (@posh-conns conn)))
+                            patterns
+                            (:tx-data @(:last-tx-report (@posh-conns conn))))]
                (let [new-q (build-query (:db-after @(:last-tx-report (@posh-conns conn)))
                                         query
                                         (map #(or (vars %) %) args))]
