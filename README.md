@@ -197,6 +197,26 @@ The datom pattern matcher is used to find if any pertinant datoms have
 been transacted in the database. The pattern can either be a
 list of patterns or a tuple of a list of patterns and a query.
 
+To play around with the datom matcher:
+
+```clj
+(use 'posh.datom-match)
+
+;;;(datom-match? db patterns datom)
+
+> (datom-match? (d/db conn) '[[_ :age 34]] [123 :age 5])
+nil
+
+```
+Note, if the pattern match is true, it will return a map that contains
+any variables that might have been bound in the match, or just an
+empty map if there are no variables.
+
+```clj
+> (datom-match? (d/db conn) '[[?p [:name :age]]] [123 :name "jim"])
+{?p 123}
+```
+
 ### Datom Matching
 
 Here are examples of all the ways patterns can match. The
