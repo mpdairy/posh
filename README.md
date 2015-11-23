@@ -1,6 +1,6 @@
 # Posh
 ```clj
-[posh "0.2.2.2"]
+[posh "0.3"]
 ```
 Posh is a little library that lets you use a DataScript database to
 keep your application state. All components have access to the
@@ -60,11 +60,13 @@ You can do it for multiple conn's, though I don't know why you'd want to.
 
 ### db-tx
 
-The heart of Posh is the function `db-tx`, which takes a `conn` and a list of tx patterns as
-input and returns a Regeant `reaction` that updates only when one of
-the database's tx report datoms match one of the patterns. The reaction returns
-the value of the whole database (`:db-after`) after the tx that it matches. A
-really simple example:
+`(db-tx [conn] [tx pattern])`
+
+`db-tx` listens to the tx report queue and returns the value of the
+database after a match. The hosting Reagent component won't update
+with a new db until there is a pattern match.
+
+This example displays a list of people who are ten years old:
 
 ```clj
 (defn ten-year-olds []
@@ -79,15 +81,10 @@ really simple example:
        ^{:key (:db/id k)} [:li (:person/name k)])]))
 ```
 
-So, we define `db` to be `(db-tx conn '[[_ :person/age 10]])`, which
-returns an atom of sorts that only changes when someone's age changes
-to 10 (or gets retracted, like if they turn 11). I know, it's hard to
-believe--it's not even a form-2 component--but it really won't
-re-render until somebody turns 10.
+The example below displays a person and increases its own age
+whenever clicked. It only updates when a datom with its own
+entity id is transacted.
 
-And you can do nice little components that just match on their own
-`:db/id`. This one displays a person and increases its own age
-whenever you click on it.
 ```clj
 (defn person [id]
   (let [db (db-tx conn [[id]])
@@ -97,30 +94,80 @@ whenever you click on it.
      (:person/name p) " -- " (:person/age p)]))
 ```
 
-### pull-tx and pull
+### pull-tx
 
-(Not yet implemented)
+`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
 
-`pull-tx` and `pull` are just like DataScript's pull, but they only
-update the components that call them when the pull request changes.
-Also, `pull-tx` takes a tx-matching limiter so that the pull request
-won't be run unless it matches the pattern. `pull` just basically runs
-`(pull-tx conn '[[]] ...)` so it tries the pull request every time
-there is any new tx, thus it's more expensive.
-
-Also note that they take a conn instead of a db value.
-
-They both return a vector containing the db value at the time of the
-pull and the result of the pull request.
+`pull-tx` is just like DataScript's pull but it will only pull when
+the datom pattern matches a tx in the tx report. It remembers the last
+pull and only updates the hosting component if they are different.
 
 An example, that pulls all of the info from the entity with `id`
-whenever `id` is updated:
+whenever `id` is updated and increases the age whenever clicked:
 
 ```clj
-(defn person [id]
-  (let [[db p] (pull-tx conn [[id]] `[*] id)]
-    [:div (:person/name @p)]))
+(defn pull-person [id]
+  (let [p (pull-tx conn [[id]] '[*] id)]
+    (println "Person: " (:person/name @p))
+    [:div
+     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
+     (:person/name @p) ": " (:person/age @p)]))
 ```
+
+### q-tx
+
+`(q-tx [conn] [tx pattern] [query] & args)`
+
+`q-tx` calls DataScript's `q` with the given query, but only if the
+tx pattern matches a transaction datom. If the result of the query is
+different than the last query, the hosting Reagent component will
+update. `args` are optional extra variables that `q` look for
+after the `[:find ...]` query if the query has an `:in` specification.
+By default, the database at the time of the transaction is implicitly
+passed in as the first arg.
+
+Below is an example of a component that shows a list of people's names
+who are younger than a certain age:
+
+```clj
+(defn people-younger-than [old-age]
+  (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
+                                              :in $ ?old
+                                              :where
+                                              [?p :person/age ?age]
+                                              [(< ?age ?old)]
+                                              [?p :person/name ?name]]
+                    old-age)]
+    [:ul "People younger than 30:"
+     (for [n @young] ^{:key n} [:li n])]))
+```
+
+You can also set variables in the datom pattern match and use them in
+the query. In the next example, the values of `?birthday-boy` and
+`?birthday-age` from the pattern match are used as args to the query.
+
+```clj
+(defn all-people-older-than-birthday-person []
+  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
+                    '[:find ?birthday-name ?name
+                      :in $ ?birthday-boy ?birthday-age
+                      :where
+                      [?p :person/age ?age]
+                      [(> ?age ?birthday-age)]
+                      [?p :person/name ?name]
+                      [?birthday-boy :person/name ?birthday-name]]
+                    '?birthday-boy
+                    '?birthday-age)]
+    (if (empty? @r)
+      [:div "Waiting for a birthday..."]
+      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
+       (for [n (map second @r)] ^{:key n} [:li n])])))
+```
+
+If you put any variable symbols in the `args` (symbols starting with a
+`?`), the query will return an empty set on load and won't change
+until a datom is matched from the tx report.
+
 
 ### Pattern Matching
 #### Tx Datoms

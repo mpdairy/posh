@@ -1,6 +1,6 @@
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!] :as posh]
+            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
             [datascript.core :as d]))
 
 
