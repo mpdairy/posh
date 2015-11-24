@@ -207,8 +207,11 @@ heck you might as well start using it.
 ## Pattern Matching
 
 The datom pattern matcher is used to find if any pertinant datoms have
-been transacted in the database. The pattern can either be a
-list of patterns or a tuple of a list of patterns and a query.
+been transacted in the database. If you stick to just using `q` and `pull`,
+you won't need to do any pattern matching, but you might want it for
+`when-tx!` and most certainly you'll want it if you use `db-tx`.
+
+The pattern can either be a list of patterns or a tuple of a list of patterns and a query.
 
 To play around with the datom matcher:
 
