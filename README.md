@@ -130,7 +130,8 @@ Or, if you called the same query with just `q`:
    old-age)
 ```
 `q` would generate the tx datom matching pattern `'[[_ :person/age]
-[_ :person/name]]`.
+[_ :person/name]]`, which is more correct than the hand-specified
+pattern I used in `q-tx`.
 
 ### db-tx
 
