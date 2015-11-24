@@ -457,39 +457,56 @@ with any tags you put into `person-sortables`.
 
 ## Advanced Examples
 
-### Mixing with Component Local Variables
-Here's a component that uses an `r/atom` in the outer form to keep
-track of the local state of the input box. The component takes an
-entity id and an attrib, like :person/name or :book/title, and turns
-it into a div with an "edit" button that, when clicked, will turn into
-an input box with a "done" button, which, when clicked, will transact
-the input-box value as the value for the original entity id and attrib.
+### Editable Label
+
+This component will show the text value
+for any entity and attrib. There is an "edit" button that, when clicked, 
+creates an `:edit` entity that keeps track of the
+temporary text typed in the edit box. The "done" button resets the original
+value of the entity and attrib and deletes the `:edit` entity. The
+"cancel" button just deletes the `:edit` entity.
+
+The state is stored entirely in the database for this solution, so if
+you were to save the db during the middle of an edit, if you restored
+it later, you would be in the middle of the edit still.
 
 ```clj
-(defn editable [id attr]
-  (let [db          (db-tx conn [[id :action/editing attr]])
-        input-value (r/atom (attr (d/entity @db id)))]
-    (fn [id attr]
-      (let [parent   (d/entity @db id)
-            text     (attr parent)
-            editing? (:action/editing parent)]
-        (if editing?
-          [:div [:input {:type "text"
-                         :value @input-value
-                         :onChange #(reset! input-value (-> % .-target .-value))}]
-           [:button {:onClick #(transact! conn [[:db/add id attr @input-value]
-                                               [:db/retract id :action/editing attr]])} "Done"]]
-          [:div text
-           [:button {:onClick #(transact! conn [[:db/add id :action/editing attr]])}
-            "Edit"]])))))
+(defn edit-box [edit-id id attr]
+  (let [edit @(p/pull conn [:edit/val] edit-id)]
+    [:span
+     [:input
+      {:type "text"
+       :value (:edit/val edit)
+       :onChange #(p/transact! conn [[:db/add edit-id :edit/val (-> % .-target .-value)]])}]
+     [:button
+      {:onClick #(p/transact! conn [[:db/add id attr (:edit/val edit)]
+                                    [:db.fn/retractEntity edit-id]])}
+      "Done"]
+     [:button
+      {:onClick #(p/transact! conn [[:db.fn/retractEntity edit-id]])}
+      "Cancel"]]))
 
-;; would be called with something like [editable person-id :person/name]
+(defn editable-label [id attr]
+  (let [val  (attr @(p/pull conn [attr] id))
+        edit @(p/q conn '[:find ?edit .
+                          :in $ ?id ?attr
+                          :where
+                          [?edit :edit/id ?id]
+                          [?edit :edit/attr ?attr]]
+                   id attr)]
+    (if-not edit
+      [:span val
+       [:button
+        {:onClick #(new-entity! conn {:edit/id id :edit/val val :edit/attr attr})}
+        "Edit"]]
+      [edit-box edit id attr])))
+
 ```
 
-Alternatively, you could use no local atom and just transact the value
-directly to the db as the user types. Or, best of all, you could update a temporary
-attrib in the db and then set that to equal the original value when
-the editing is finished, so that all state is saved in the db.
+This can be called with any entity and its text attrib, like
+`[editable-label 123 :person/name]` or
+`[editable-label 432 :category/title]`.
+
 
 ### Using `?variables` from the Datom Match
 
