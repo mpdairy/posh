@@ -16,25 +16,23 @@ large database.
 Start a Reagent project and include these dependencies
 
 ```clj
-[posh "0.3.1"]
+[posh "0.3.2"]
 [datascript "0.13.3"]
 ```
 Require in Reagent app files:
 ```clj
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
+            [posh.core :refer [pull q db-tx pull-tx q-tx when-tx! transact! posh!]]
             [datascript.core :as d]))
 ```
 
 ## Overview
 
 Posh gives you three functions to retrieve data from the database from
-within Reagent components: `db-tx`,
-`pull-tx`, and `q-tx`. They watch the database's transaction report
-and only update (re-render) when one of the transacted datoms matches the
-specified pattern. The datom pattern matcher is very powerful and is
-explained below this overview of functions.
+within Reagent components: `pull`, `q`, and `db-tx`. They watch the
+database's transaction report and only update (re-render) the hosting
+component when one of the transacted datoms affects the requested data.
 
 ### posh!
 
@@ -54,7 +52,7 @@ Sets up the tx-report listener for a conn.
 ```
 You can do it for multiple conn's, though I don't know why you'd want to.
 
-### pull-tx
+### pull
 
 `(pull [conn] [pull pattern] [entity id])`
 
@@ -90,7 +88,7 @@ whenever `id` is updated and increases its age whenever clicked:
      (:person/name @p) ": " (:person/age @p)]))
 ```
 
-### q and q-tx
+### q
 
 `(q [conn] [query] & args)`
 
