@@ -54,6 +54,90 @@ Sets up the tx-report listener for a conn.
 ```
 You can do it for multiple conn's, though I don't know why you'd want to.
 
+### pull-tx
+
+`(pull [conn] [pull pattern] [entity id])`
+
+`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
+
+`pull-tx` is just like DataScript's `pull` but it will only pull when
+the datom pattern matches a tx in the tx report. It remembers the last
+pull and only updates the hosting component if the new pull is different.
+
+Posh's `pull` calls `pull-tx` but generates the tx datom matching
+pattern by looking at the pull pattern. For example:
+
+```clj
+(pull conn '[:person/name :person/age] 1234)
+```
+Would call:
+```clj
+(pull-tx conn '[[1234 [:person/name :person/age]]]
+         '[:person/name :person/age] 1234)
+```
+(Note, `pull` currently just calls `pull-tx` with `[[]]`, which matches
+any datom, but in the near future it will be smarter)
+
+An example, that pulls all of the info from the entity with `id`
+whenever `id` is updated and increases its age whenever clicked:
+
+```clj
+(defn pull-person [id]
+  (let [p (pull conn '[*] id)]
+    (println "Person: " (:person/name @p))
+    [:div
+     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
+     (:person/name @p) ": " (:person/age @p)]))
+```
+
+### q and q-tx
+
+`(q [conn] [query] & args)`
+
+`(q-tx [conn] [tx pattern] [query] & args)`
+
+`q-tx` calls DataScript's `d/q` (`d` being DataScript's namespace) with the given query, but only if the
+tx pattern matches a transaction datom. If the result of the query is
+different than the last query, the hosting Reagent component will
+update. `args` are optional extra variables that `q` look for
+after the `[:find ...]` query if the query has an `:in` specification.
+By default, the database at the time of the transaction is implicitly
+passed in as the first arg.
+
+Posh's `q` calls `q-tx` but auto-generates the tx datom matching
+pattern by looking at the query. (Currently it just generates `[[]]`,
+which matches any tx datom, but in the future it will be smarter)
+
+Below is an example of a component that shows a list of people's names
+who are younger than a certain age. It only attempts the query when
+someone's age changes::
+
+```clj
+(defn people-younger-than [old-age]
+  (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
+                                              :in $ ?old
+                                              :where
+                                              [?p :person/age ?age]
+                                              [(< ?age ?old)]
+                                              [?p :person/name ?name]]
+                    old-age)]
+    [:ul "People younger than 30:"
+     (for [n @young] ^{:key n} [:li n])]))
+```
+
+Or, if you called the same query with just `q`:
+```clj
+(q conn '[:find [?name ...]
+          :in $ ?old
+          :where
+          [?p :person/age ?age]
+          [(< ?age ?old)]
+          [?p :person/name ?name]]
+   old-age)
+```
+`q` would generate the tx datom matching pattern `'[[_ :person/age]
+[_ :person/name]]`.
+
 ### db-tx
 
 `(db-tx [conn] [tx pattern])`
@@ -61,6 +145,11 @@ You can do it for multiple conn's, though I don't know why you'd want to.
 `db-tx` listens to the tx report queue and returns the value of the
 database after a match. The hosting Reagent component won't update
 with a new db until there is a pattern match.
+
+It is generally recommended that you use `pull`s and `q`s for any
+components instead of `db-tx`. If you do use `db-tx`, it is
+very important to provide thorough tx pattern matching rules to
+restrict the component from re-rendering each time the db changes.
 
 This example displays a list of people who are ten years old. The
 component will only update when someone's age is set to 10 or changed
@@ -90,55 +179,6 @@ entity id is transacted.
     [:div
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) " -- " (:person/age p)]))
-```
-
-### pull-tx
-
-`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
-
-`pull-tx` is just like DataScript's pull but it will only pull when
-the datom pattern matches a tx in the tx report. It remembers the last
-pull and only updates the hosting component if the new pull is different.
-
-An example, that pulls all of the info from the entity with `id`
-whenever `id` is updated and increases its age whenever clicked:
-
-```clj
-(defn pull-person [id]
-  (let [p (pull-tx conn [[id]] '[*] id)]
-    (println "Person: " (:person/name @p))
-    [:div
-     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
-     (:person/name @p) ": " (:person/age @p)]))
-```
-
-### q-tx
-
-`(q-tx [conn] [tx pattern] [query] & args)`
-
-`q-tx` calls DataScript's `q` with the given query, but only if the
-tx pattern matches a transaction datom. If the result of the query is
-different than the last query, the hosting Reagent component will
-update. `args` are optional extra variables that `q` look for
-after the `[:find ...]` query if the query has an `:in` specification.
-By default, the database at the time of the transaction is implicitly
-passed in as the first arg.
-
-Below is an example of a component that shows a list of people's names
-who are younger than a certain age. It only attempts the query when
-someone's age changes::
-
-```clj
-(defn people-younger-than [old-age]
-  (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
-                                              :in $ ?old
-                                              :where
-                                              [?p :person/age ?age]
-                                              [(< ?age ?old)]
-                                              [?p :person/name ?name]]
-                    old-age)]
-    [:ul "People younger than 30:"
-     (for [n @young] ^{:key n} [:li n])]))
 ```
 
 ### when-tx!
@@ -272,6 +312,9 @@ same pattern matching.
 ```
 
 ### Query Matching
+
+Note: You shouldn't need query matching when using `pull`s and `q`s, but it
+is useful for `db-tx` and `when-tx!`.
 
 In some cases you might want to do a little querying to get some extra
 information. For example, suppose we have a bookshelf component that
