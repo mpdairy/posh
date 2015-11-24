@@ -144,6 +144,7 @@
   [['_ :person/age old-age _ true]]
   )
 
+
 (defn people-younger-than [old-age]
   (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
                                               :in $ ?old

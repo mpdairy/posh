@@ -35,8 +35,20 @@
 (d/transact! conn
              [{:db/id -1 :group/name "Pine Club" :group/sort-by :person/name}
               {:db/id -2 :group/name "Oak Club" :group/sort-by :person/age}])
+(let [r (d/q '[:find ?n ?g :where [?g :group/name ?n]] @conn)]
+  (apply merge (map (fn [[a b]] {a b}) r)))
 
-(let [groups (d/q '[:find [?g ...] :where [?g :group/name _]] @conn)]
+(defn pairmap [pair] (apply merge (map (fn [[a b]] {a b}) pair)))
+
+(def tempid (let [n (atom 0)] (fn [] (swap! n dec))))
+
+(def category-tag #(= (namespace %) "category"))
+(category-tag :categordy/jones)
+(tempid)
+
+(pairmap (d/q '[:find ?n ?g :where [?g :group/name ?n]] @conn))
+
+(let [groups (d/q '[:find ?n ?g :where [?g :group/name ?n]] @conn)]
   (d/transact!
    conn
    [{:db/id -3 :person/name "Bob" :person/age 30 :person/group (rand-nth groups) :person/dog "Mojo"}
@@ -379,6 +391,23 @@
 
 (namespace :person/jim)
 
+(defn real-q-tx [conn patterns query & args]
+  (concat [conn patterns query] args))
+
+(defn q-tx [conn patterns-or-query & args]
+  (if (= (first patterns-or-query) :find)   ;; it's a query
+    (apply (partial real-q-tx conn '[[]] patterns-or-query) args)
+    (apply (partial real-q-tx conn patterns-or-query (first args)) (rest args))))
+
+(q-tx :conn '[:find ?b :where] 3 5)
+
+
+(defn q-tx
+  
+  ([conn query & args]
+     :hey)
+  ([conn patterns query & args]
+     :there))
 
 (deep-map #(or ({:hey 3333} %) %)
           [5 {:a 1 :hey 2 :c :hey} [:look :hey {[:hey 34] 8}]])
@@ -533,3 +562,64 @@
 
 (d/transact! conn [{:db/id -1 :name "Lazy Angel" :age 4}])
 
+
+
+
+;;;;;;;;; example
+
+
+;;; util
+(defn pairmap [pair] (apply merge (map (fn [[a b]] {a b}) pair)))
+
+(defn ents [db ids] (map (partial d/entity db) ids))
+
+;;; setup
+
+(def tempid (let [n (atom 0)] (fn [] (swap! n dec))))
+
+(def schema {:task/category {:db/valueType :db.type/ref}
+             :category/user {:db/valueType :db.type/ref}
+             :user/display-category {:db/valueType :db.type/ref}
+             :action/editing {:db/cardinality :db.cardinality/many}})
+
+(def conn (d/create-conn schema))
+
+(d/transact! conn [{:db/id (tempid) :user/name "Matt"}])
+(d/transact! conn
+             (let [user-id (d/q '[:find ?u . :where [?u :user/name "Matt"]] @conn)]
+               [{:db/id (tempid) :category/name "At Home" :category/user user-id}
+                {:db/id (tempid) :category/name "Work Stuff" :category/user user-id}
+                {:db/id (tempid) :category/name "Hobby" :category/user user-id}]))
+(d/transact!
+ conn
+ (let [cats (pairmap (d/q '[:find ?n ?c :where [?c :category/name ?n]] @conn))]
+   [{:db/id (tempid)
+     :task/name "Clean Dishes"
+     :task/done true
+     :task/category (cats "At Home")}
+    {:db/id (tempid)
+     :task/name "Mop Floors"
+     :task/done true
+     :task/pin true
+     :task/category (cats "At Home")}
+    {:db/id (tempid)
+     :task/name "Draw a picture of a cat"
+     :task/done false
+     :task/category (cats "Hobby")}
+    {:db/id (tempid)
+     :task/name "Compose opera"
+     :task/done true
+     :task/category (cats "Hobby")}
+    {:db/id (tempid)
+     :task/name "stock market library"
+     :task/done false
+     :task/pinned true
+     :task/category (cats "Work Stuff")}]))
+
+(d/pull @conn '[*] 2)
+
+(d/pull @conn '[{:category/_user [:db/id :category/name]}] 1)
+
+(def user (d/entity @conn 1))
+
+(user :category/_user)

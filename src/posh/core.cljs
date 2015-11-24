@@ -84,6 +84,15 @@
             (deep-map #(or (vars %) %) pull-syntax))
           (or (vars entity) entity)))
 
+;; in the future this will return some restricing tx patterns
+(defn generate-tx-patterns-from-pull [pull-pattern entity-id]
+  [[]])
+
+(defn pull [conn pull-pattern entity-id]
+  (pull-tx conn
+           (generate-tx-patterns-from-pull pull-pattern entity-id)
+           pull-pattern entity-id))
+
 (defn pull-tx [conn patterns pull-pattern entity-id]
   (if-let [r (@established-reactions [:pull-tx conn patterns pull-pattern entity-id])]
     r
@@ -97,7 +106,7 @@
                             patterns
                             (:tx-data @(:last-tx-report (@posh-conns conn))))]
                (let [new-pull (build-pull (:db-after @(:last-tx-report (@posh-conns conn)))
-                                      pull-pattern entity-id vars)]
+                                          pull-pattern entity-id vars)]
                  (if (not= @saved-pull new-pull)
                    (reset! saved-pull new-pull)
                    @saved-pull))
@@ -109,6 +118,18 @@
 (defn build-query [db q args]
   (apply (partial d/q q)
          (cons db (or args []))))
+
+;; in the future this will return some restricing tx patterns
+(defn generate-tx-patterns-from-q [query & args]
+  [[]])
+
+(defn q [conn query & args]
+  (apply (partial
+          q-tx
+          conn
+          (apply (partial generate-tx-patterns-from-q query) args)
+          query)
+         args))
 
 (defn q-tx [conn patterns query & args]
   (if-let [r (@established-reactions [:q-tx conn patterns query args])]
