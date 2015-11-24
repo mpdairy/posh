@@ -55,7 +55,7 @@ for that.
 `(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
 
 `pull-tx` is just like DataScript's `pull` but it will only pull when
-the datom pattern matches a tx in the tx report. It remembers the last
+the `tx pattern` matches a datom in the tx report. It remembers the last
 pull and only updates the hosting component if the new pull is different.
 
 Posh's `pull` calls `pull-tx` but generates the tx datom matching
@@ -90,21 +90,21 @@ whenever `id` is updated and increases its age whenever clicked:
 
 `(q-tx [conn] [tx pattern] [query] & args)`
 
-`q-tx` calls DataScript's `d/q` (`d` being DataScript's namespace) with the given query, but only if the
-tx pattern matches a transaction datom. If the result of the query is
+`q-tx` calls DataScript's `q` with the given query, but only if the
+`tx pattern` matches a transaction datom. If the result of the query is
 different than the last query, the hosting Reagent component will
-update. `args` are optional extra variables that `q` look for
+update. `args` are optional extra variables that DataScript's `q` look for
 after the `[:find ...]` query if the query has an `:in` specification.
 By default, the database at the time of the transaction is implicitly
 passed in as the first arg.
 
-Posh's `q` calls `q-tx` but auto-generates the tx datom matching
-pattern by looking at the query. (Currently it just generates `[[]]`,
+Posh's `q` calls `q-tx` but auto-generates the `tx-pattern`
+by looking at the query. (Currently it just generates `[[]]`,
 which matches any tx datom, but in the future it will be smarter)
 
 Below is an example of a component that shows a list of people's names
 who are younger than a certain age. It only attempts the query when
-someone's age changes::
+someone's age changes:
 
 ```clj
 (defn people-younger-than [old-age]
@@ -161,6 +161,7 @@ from 10 (retracted).
      (for [k kids]
        ^{:key (:db/id k)} [:li (:person/name k)])]))
 ```
+(Note: the above component should have just used posh's `q`)
 
 The example below displays a person and increases its own age
 whenever clicked. It only re-renders when a datom with its own
@@ -174,6 +175,8 @@ entity id is transacted.
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) " -- " (:person/age p)]))
 ```
+
+(Note: the above component should have just used posh's `pull`)
 
 ### when-tx!
 
