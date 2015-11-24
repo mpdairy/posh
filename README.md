@@ -41,16 +41,12 @@ component when one of the transacted datoms affects the requested data.
 Sets up the tx-report listener for a conn.
 
 ```clj
-(ns ...
-   (:require [reagent.core :as r]
-             [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
-             [datascript.core :as d]))
-
 (def conn (d/create-conn))
 
 (posh! conn)
 ```
-You can do it for multiple conn's, though I don't know why you'd want to.
+You can do it for multiple conn's, though I can't imagine a good use case
+for that.
 
 ### pull
 
