@@ -188,11 +188,11 @@ calls `(handler-fn matching-tx-datom db-after)`.
 
 ```clj
 ;; congratulates any one who turns 21
-(when-tx conn
-         '[[_ :person/age 21 _ true]]
-         (fn [[e a v] db]
-           (js/alert (str "You have come of age, "
-                          (:person/name (d/entity db e)) "."))))
+(when-tx! conn
+          '[[_ :person/age 21 _ true]]
+          (fn [[e a v] db]
+            (js/alert (str "You have come of age, "
+                           (:person/name (d/entity db e)) "."))))
 ```
 
 You could use `when-tx!` to handle events or to trigger communication
