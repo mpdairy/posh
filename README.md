@@ -204,6 +204,58 @@ Right now, `transact!` just calls `d/transact!`, but maybe in the future
 it might have to do some pre-transaction filtering or something, so
 heck you might as well start using it.
 
+## Advanced Examples
+
+### Editable Label
+
+This component will show the text value
+for any entity and attrib. There is an "edit" button that, when clicked, 
+creates an `:edit` entity that keeps track of the
+temporary text typed in the edit box. The "done" button resets the original
+value of the entity and attrib and deletes the `:edit` entity. The
+"cancel" button just deletes the `:edit` entity.
+
+The state is stored entirely in the database for this solution, so if
+you were to save the db during the middle of an edit, if you restored
+it later, you would be in the middle of the edit still.
+
+```clj
+(defn edit-box [edit-id id attr]
+  (let [edit @(p/pull conn [:edit/val] edit-id)]
+    [:span
+     [:input
+      {:type "text"
+       :value (:edit/val edit)
+       :onChange #(p/transact! conn [[:db/add edit-id :edit/val (-> % .-target .-value)]])}]
+     [:button
+      {:onClick #(p/transact! conn [[:db/add id attr (:edit/val edit)]
+                                    [:db.fn/retractEntity edit-id]])}
+      "Done"]
+     [:button
+      {:onClick #(p/transact! conn [[:db.fn/retractEntity edit-id]])}
+      "Cancel"]]))
+
+(defn editable-label [id attr]
+  (let [val  (attr @(p/pull conn [attr] id))
+        edit @(p/q conn '[:find ?edit .
+                          :in $ ?id ?attr
+                          :where
+                          [?edit :edit/id ?id]
+                          [?edit :edit/attr ?attr]]
+                   id attr)]
+    (if-not edit
+      [:span val
+       [:button
+        {:onClick #(new-entity! conn {:edit/id id :edit/val val :edit/attr attr})}
+        "Edit"]]
+      [edit-box edit id attr])))
+
+```
+
+This can be called with any entity and its text attrib, like
+`[editable-label 123 :person/name]` or
+`[editable-label 432 :category/title]`.
+
 ## Pattern Matching
 
 The datom pattern matcher is used to find if any pertinant datoms have
@@ -454,59 +506,6 @@ with any tags you put into `person-sortables`.
           '[?p :person/group ?g]
           '[?g :group/sort-by ?sort-attr]]}])
 ```
-
-## Advanced Examples
-
-### Editable Label
-
-This component will show the text value
-for any entity and attrib. There is an "edit" button that, when clicked, 
-creates an `:edit` entity that keeps track of the
-temporary text typed in the edit box. The "done" button resets the original
-value of the entity and attrib and deletes the `:edit` entity. The
-"cancel" button just deletes the `:edit` entity.
-
-The state is stored entirely in the database for this solution, so if
-you were to save the db during the middle of an edit, if you restored
-it later, you would be in the middle of the edit still.
-
-```clj
-(defn edit-box [edit-id id attr]
-  (let [edit @(p/pull conn [:edit/val] edit-id)]
-    [:span
-     [:input
-      {:type "text"
-       :value (:edit/val edit)
-       :onChange #(p/transact! conn [[:db/add edit-id :edit/val (-> % .-target .-value)]])}]
-     [:button
-      {:onClick #(p/transact! conn [[:db/add id attr (:edit/val edit)]
-                                    [:db.fn/retractEntity edit-id]])}
-      "Done"]
-     [:button
-      {:onClick #(p/transact! conn [[:db.fn/retractEntity edit-id]])}
-      "Cancel"]]))
-
-(defn editable-label [id attr]
-  (let [val  (attr @(p/pull conn [attr] id))
-        edit @(p/q conn '[:find ?edit .
-                          :in $ ?id ?attr
-                          :where
-                          [?edit :edit/id ?id]
-                          [?edit :edit/attr ?attr]]
-                   id attr)]
-    (if-not edit
-      [:span val
-       [:button
-        {:onClick #(new-entity! conn {:edit/id id :edit/val val :edit/attr attr})}
-        "Edit"]]
-      [edit-box edit id attr])))
-
-```
-
-This can be called with any entity and its text attrib, like
-`[editable-label 123 :person/name]` or
-`[editable-label 432 :category/title]`.
-
 
 ### Using `?variables` from the Datom Match
 
