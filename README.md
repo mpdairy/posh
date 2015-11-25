@@ -209,7 +209,7 @@ heck you might as well start using it.
 ### Editable Label
 
 This component will show the text value
-for any entity and attrib. There is an "edit" button that, when clicked, 
+for any entity and attrib combo. There is an "edit" button that, when clicked, 
 creates an `:edit` entity that keeps track of the
 temporary text typed in the edit box. The "done" button resets the original
 value of the entity and attrib and deletes the `:edit` entity. The
