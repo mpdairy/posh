@@ -220,7 +220,7 @@ you were to save the db during the middle of an edit, if you restored
 it later, you would be in the middle of the edit still.
 
 ```clj
-(defn edit-box [edit-id id attr]
+(defn edit-box [conn edit-id id attr]
   (let [edit @(p/pull conn [:edit/val] edit-id)]
     [:span
      [:input
@@ -235,7 +235,7 @@ it later, you would be in the middle of the edit still.
       {:onClick #(p/transact! conn [[:db.fn/retractEntity edit-id]])}
       "Cancel"]]))
 
-(defn editable-label [id attr]
+(defn editable-label [conn id attr]
   (let [val  (attr @(p/pull conn [attr] id))
         edit @(p/q conn '[:find ?edit .
                           :in $ ?id ?attr
@@ -248,19 +248,19 @@ it later, you would be in the middle of the edit still.
        [:button
         {:onClick #(new-entity! conn {:edit/id id :edit/val val :edit/attr attr})}
         "Edit"]]
-      [edit-box edit id attr])))
+      [edit-box conn edit id attr])))
 
 ```
 
 This can be called with any entity and its text attrib, like
-`[editable-label 123 :person/name]` or
-`[editable-label 432 :category/title]`.
+`[editable-label conn 123 :person/name]` or
+`[editable-label conn 432 :category/title]`.
 
 ## Pattern Matching
 
 The datom pattern matcher is used to find if any pertinant datoms have
 been transacted in the database. If you stick to just using `q` and `pull`,
-you won't need to do any pattern matching, but you might want it for
+you probably won't need to do any pattern matching, but you might want it for
 `when-tx!` and most certainly you'll want it if you use `db-tx`.
 
 The pattern can either be a list of patterns or a tuple of a list of patterns and a query.
