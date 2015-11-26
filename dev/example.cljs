@@ -1,6 +1,6 @@
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [db-tx pull-tx q-tx when-tx! transact! posh!]]
+            [posh.core :refer [db-tx pull-tx q-tx transact! posh!] :as p]
             [datascript.core :as d]))
 
 
@@ -36,10 +36,23 @@
 
 ;; congratulates anyone who turns 21
 
-(when-tx! conn
-          '[[?p :person/age 21 _ true]]
-          (fn [[e a v] db]
-            (js/alert (str "You have come of age, " (:person/name (d/entity db e)) "."))))
+(p/after-tx! conn
+             '[[?p :person/age 21 _ true]]
+             (fn [[e a v] db]
+               (js/alert (str "You have come of age, "
+                              (:person/name (d/entity db e)) "."))))
+
+(p/before-tx! conn
+              '[[:db/add _ :person/age 21]]
+              (fn [[action e a v] db]
+                (println "person21: " (pr-str [action e a v]))
+                (js/alert (str "__before__: You have come of age, "
+                               (:person/name (d/entity db e)) "."))))
+
+(p/before-tx! conn
+              '[[]]
+              (fn [[action e a v] db]
+                (println "tx: " (pr-str [action e a v]))))
 
 ;;; Components
 
@@ -235,13 +248,14 @@
         [:div "-----------------GROUPS----------------"
          (map (fn [g] ^{:key g} [group g]) group-ids)]))))
 
-
 (defn app []
   [:div
    [drunkard-club]
    [people-younger-than 30]
    [all-people-older-than-birthday-person]
    [last-person-changed]
+   ;;[update-transactions]
+   ;;[p/transactions]
    [groups]])
 
 

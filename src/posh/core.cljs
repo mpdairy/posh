@@ -9,22 +9,23 @@
 
 (def posh-conns (atom {}))
 
-(declare try-tx-listener)
+(declare try-after-tx)
 
 (defn posh! [conn]
   (swap! posh-conns merge {conn {:last-tx-report (r/atom [])
                                  :conn           (atom conn)
-                                 :tx-listeners   (atom [])}})
+                                 :after-tx       (atom [])
+                                 :before-tx      (atom [])}})
   (d/listen! @(:conn (@posh-conns conn)) :history
              (fn [tx-report]
                (do
                  ;;(println (pr-str (:tx-data tx-report)))
                  (doall
                   (for [tx-datom (:tx-data tx-report)
-                        listener @(:tx-listeners (@posh-conns conn))]
-                    (try-tx-listener (:db-before tx-report)
-                                     (:db-after tx-report)
-                                     tx-datom listener)))
+                        after-tx @(:after-tx (@posh-conns conn))]
+                    (try-after-tx (:db-before tx-report)
+                                  (:db-after tx-report)
+                                  tx-datom after-tx)))
                  (reset! (:last-tx-report (@posh-conns conn)) tx-report)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -33,8 +34,33 @@
 ;; might have to make this something that combines the tx's or adds
 ;; filters or something. For now it's sort of pointless.
 
+(def transactions-buffer (r/atom {}))
+
+(defn split-tx-map [tx-map]
+  (if (map? tx-map)
+    (let [id (:db/id tx-map)]
+      (map (fn [[k v]] [:db/add id k v]) (dissoc tx-map :db/id)))
+    [tx-map]))
+
+(defn clean-tx [tx]
+  (apply concat (map split-tx-map tx)))
+
 (defn transact! [conn tx]
-  (d/transact! conn tx))
+  (swap! transactions-buffer
+         #(update % conn (comp vec (partial concat (clean-tx tx))))))
+
+(declare try-all-before-tx!)
+
+(defn do-transaction! [conn]
+  (let [tx (@transactions-buffer conn)]
+    (when tx
+      (let [_  (try-all-before-tx! conn tx)
+            tx (@transactions-buffer conn)]
+        (swap! transactions-buffer #(dissoc % conn))
+        (d/transact! conn tx)))))
+
+(defn update-transactions! []
+  (doall (map (fn [[conn]] (do-transaction! conn)) @transactions-buffer)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; reactions
@@ -88,11 +114,6 @@
 (defn generate-tx-patterns-from-pull [pull-pattern entity-id]
   [[]])
 
-(defn pull [conn pull-pattern entity-id]
-  (pull-tx conn
-           (generate-tx-patterns-from-pull pull-pattern entity-id)
-           pull-pattern entity-id))
-
 (defn pull-tx [conn patterns pull-pattern entity-id]
   (if-let [r (@established-reactions [:pull-tx conn patterns pull-pattern entity-id])]
     r
@@ -115,6 +136,11 @@
              {[:pull-tx conn patterns pull-pattern entity-id] new-reaction})
       new-reaction)))
 
+(defn pull [conn pull-pattern entity-id]
+  (pull-tx conn
+           (generate-tx-patterns-from-pull pull-pattern entity-id)
+           pull-pattern entity-id))
+
 (defn build-query [db q args]
   (apply (partial d/q q)
          (cons db (or args []))))
@@ -122,14 +148,6 @@
 ;; in the future this will return some restricing tx patterns
 (defn generate-tx-patterns-from-q [query & args]
   [[]])
-
-(defn q [conn query & args]
-  (apply (partial
-          q-tx
-          conn
-          (apply (partial generate-tx-patterns-from-q query) args)
-          query)
-         args))
 
 (defn q-tx [conn patterns query & args]
   (if-let [r (@established-reactions [:q-tx conn patterns query args])]
@@ -154,16 +172,49 @@
              {[:q-tx conn patterns query args] new-reaction})
       new-reaction)))
 
+(defn q [conn query & args]
+  (apply (partial
+          q-tx
+          conn
+          (apply (partial generate-tx-patterns-from-q query) args)
+          query)
+         args))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; TX Listeners
 
 ;; listens for any patterns in the tx-log and runs handler-fn
 ;; handler-fn takes the args [matching-tx-datom db]
 
-(defn try-tx-listener [db-before db-after tx-datom [patterns handler-fn]]
-  (if (datom-match? db-before patterns tx-datom)
+(defn try-after-tx [db-before db-after tx-datom [patterns handler-fn]]
+  (when (datom-match? db-before patterns tx-datom)
     (handler-fn tx-datom db-after)))
 
-(defn when-tx! [conn patterns handler-fn]
-  (swap! (:tx-listeners (@posh-conns conn)) conj [patterns handler-fn]))
+(defn try-before-tx [conn tx-datom [patterns handler-fn]]
+  (if (datom-match? (d/db conn) patterns tx-datom)
+    (handler-fn tx-datom (d/db conn))))
+
+;;;; ADD FILTER-BEFORE-TX
+
+(defn try-all-before-tx! [conn txs]
+  (concat
+   (remove
+    nil?
+    (doall
+     (for [tx-datom txs
+           before-tx @(:before-tx (@posh-conns conn))]
+       (try-before-tx conn tx-datom before-tx))))
+   txs))
+
+(defn after-tx! [conn patterns handler-fn]
+  (swap! (:after-tx (@posh-conns conn)) conj [patterns handler-fn]))
+
+(defn before-tx! [conn patterns handler-fn]
+  (swap! (:before-tx (@posh-conns conn)) conj [patterns handler-fn]))
+
+
+
+;;;;; eventually this will be replaced with reagent's do-render:
+(js/setInterval update-transactions! 17)
+
 

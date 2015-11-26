@@ -618,8 +618,78 @@
 
 (d/pull @conn '[*] 2)
 
-(d/pull @conn '[{:category/_user [:db/id :category/name]}] 1)
+(d/pull @conn '[{:category/_user [:db/id :category/name]}] 1555)
 
+(d/q '[:find ?name .
+       :in $ ?id
+       :where
+       [?id :category/name ?name]]
+     @conn 2)
+
+(nth [3 4 5 4] 15)
 (def user (d/entity @conn 1))
 
+(merge {:a 1} {:a 4})
+
+(defn new-entity [conn varmap]
+  ((:tempids (d/transact! conn [(merge varmap {:db/id -1})])) -1))
+
+(new-entity conn {:person/name "jimmy"})
+
+(-> (d/transact! conn [{:db/id -1 :person/name "jimmy"}])
+    :tempids)
+
+(d/transact! conn [{:db/id 3 :person/name "Jimmy"}
+                   {:db/id 3 :person/name "Jimmy Dean"}])
+
+(d/pull @conn [:person/name] 3)
+
 (user :category/_user)
+
+
+(def pre-tx-watchers (atom {}))
+
+(def transactions (atom {}))
+
+(defn split-tx-map [tx-map]
+  (if (map? tx-map)
+    (let [id (:db/id tx-map)]
+      (map (fn [[k v]] [:db/add id k v]) (dissoc tx-map :db/id)))
+    [tx-map]))
+
+(defn clean-tx [tx]
+  (apply concat (map split-tx-map tx)))
+
+(defn transact! [conn tx]
+  (swap! transactions
+         #(update % conn (comp vec (partial concat (clean-tx tx))))))
+
+(defn do-transaction! [conn]
+  (let [tx (@transactions conn)]
+    (when tx
+      (swap! transactions #(dissoc % conn))
+      (d/transact! conn tx))))
+
+(defn do-all-transactions! []
+  (map (fn [[conn]] (do-transaction! conn)) @transactions))
+
+
+(transact! conn [{:db/id 343 :person/name "jim" :person/age 33}])
+
+(d/transact! conn [[:db/add 3 :person/name "jim"]
+                   [:db/add 3 :person/name "bobby"]
+                   [:db.fn/retractEntity 3]])
+
+(d/pull @conn [:person/name] 3)
+
+((comp vec (partial concat [[1] [2]])) [[3] [4]])
+
+(do-all-transactions!)
+
+@transactions
+
+(swap! transactions #(dissoc % conn))
+
+(update  (partial concat tx))
+
+@transactions
