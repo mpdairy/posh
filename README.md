@@ -17,7 +17,7 @@ For those who don't know, DataScript is very similar to Datomic in
 features and operation and runs in ClojureScript.
 
 For example, below is a component that displays a list of a person's age, name,
-and weight. It only updates when any transactions change something
+and weight. It only updates when any transactions have changed something
 for the `person-id` entity:
 ```
 (defn person [conn person-id]
