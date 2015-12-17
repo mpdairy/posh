@@ -18,7 +18,7 @@ features and operation and runs in ClojureScript.
 
 For example, below is a component that displays a list of a person's age, name,
 and weight. It only updates when any transactions change something
-for an entity with `person-id`.
+for the `person-id` entity.
 ```
 (defn person [conn person-id]
   (let [p @(pull conn `[*] person-id)]
