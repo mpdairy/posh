@@ -21,7 +21,7 @@ and weight. It only updates when any transactions change something
 for the `person-id` entity.
 ```
 (defn person [conn person-id]
-  (let [p @(pull conn `[*] person-id)]
+  (let [p @(pull conn '[*] person-id)]
     [:ul
      [:li (:person/name p)]
      [:li (:person/age p)]
