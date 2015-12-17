@@ -680,10 +680,13 @@
                    [:db/add 3 :person/name "bobby"]
                    [:db.fn/retractEntity 3]])
 
-(d/pull @conn [:person/name] 3)
+(d/pull @conn [:person/name] 4)
+(d/transact! conn [[:db/retract 4 :person/name "Jimmy"]])
 
 ((comp vec (partial concat [[1] [2]])) [[3] [4]])
 
+(int 3.44)
+(rand-int 999999)
 (do-all-transactions!)
 
 @transactions
@@ -691,5 +694,217 @@
 (swap! transactions #(dissoc % conn))
 
 (update  (partial concat tx))
-
+(read-string "3")
 @transactions
+(nth [12 2 3] 2)
+
+(sort-by :a
+         [{:a 3} {:a 8} {:a 1}])
+
+
+(comment
+  '[:person/name :person/age :db/id {:person/group [:group/name :db/id]}] 432
+
+  ;; ignore :db/id
+  '[[432 [:person/name :person/age :person/group] _]
+    [_ [:group/name]]]
+
+  '[:group/name {:person/_group [:person/name :person/age]}] 753
+
+  '[[753 [:group/name]]
+    [_ :person/group 753]
+    [_ [:person/name :person/age]]]
+
+  )
+
+(namespace :jim/hello)
+(reduce str (rest "_hogan"))
+
+(defn reverse-lookup? [attr]
+  (when (= (first (name attr)) '\_)
+    (keyword (str (namespace attr) "/" (reduce str (rest (name attr)))))))
+
+(declare pull-list)
+
+(defn pull-datom [k ent-id]
+  (if-let [rk (reverse-lookup? k)]
+    ['_ rk ent-id]
+    [ent-id k]))
+
+(defn pull-map [m ent-id]
+  (if (empty? m)
+    []
+    (let [[k v] (first m)]
+      (concat [(pull-datom k ent-id)]
+              (pull-list v '_)
+              (pull-map (rest m) ent-id)))))
+
+(defn pull-list [ls ent-id]
+  (cond
+   (empty? ls) []
+
+   (= (first ls) '*)
+   (cons [ent-id] (pull-list (rest ls) ent-id))
+
+   (and (keyword? (first ls)) (not= (first ls) :db/id))
+   (cons (pull-datom (first ls) ent-id) (pull-list (rest ls) ent-id))
+
+   (map? (first ls))
+   (concat (pull-map (first ls) ent-id)
+           (pull-list (rest ls) ent-id))
+
+   :else (pull-list (rest ls) ent-id)))
+
+(defn pull-pattern-gen [ls ent-id]
+  (let [p (pull-list ls ent-id)]
+    (if (some #{['_]} p)
+      '[_]
+      p)))
+
+
+(some #{['_]} [1 2 '[_] 3])
+
+(pull-list '[:person/name :person/age :db/id {:person/group [:group/name :db/id]}]
+           43433)
+
+(pull-list '[:group/name :dog/_group {:person/_group [:person/name :person/age]}] 4444)
+
+(pull-pattern-gen '[:group/name :dog/_group {:person/_group [:person/name]}] 4444)
+
+(pull-list '[*] 3443)
+
+
+(comment
+
+  (d/q conn
+       '[:find ?name ?group_name
+         :in $ ?p ?club
+         :where
+         [?p :person/name ?name]
+         [?p :person/group ?g]
+         [?g :group/name ?group_name]
+         [?g :group/club ?club]]
+       1234
+       "Stone Temple")
+
+  '[[1234 :person/name _]
+    [1234 :person/group _]
+    [_ :group/name _]
+    [_ :group/club "Stone Temple"]]
+
+  )
+
+(defn deep-some [some-fn? ls]
+  (for [x ls]
+    (if (coll? x)
+      (reduce (fn [a b] (or a b)) (deep-some some-fn? x))
+      (some-fn? x))))
+
+(defn deep-some [some-fn? x]
+  (if (not (coll? x))
+    (some-fn? x)
+    (if (empty? x)
+      false
+      (or (deep-some some-fn? (first x))
+          (deep-some some-fn? (rest x))))))
+
+
+
+(defn take-until [stop-at? ls]
+  (if (or
+       (empty? ls)
+       (stop-at? (first ls)))
+    []
+    (cons (first ls) (take-until stop-at? (rest ls)))))
+
+(defn rest-at [rest-at? ls]
+  (if (or (empty? ls) (rest-at? (first ls)))
+    ls
+    (recur rest-at? (rest ls))))
+
+(defn split-list-at [split-at? ls]
+  (if (empty? ls)
+    {}
+    (merge {(first ls) (take-until split-at? (take-until split-at? (rest ls)))}
+           (split-list-at split-at? (rest-at split-at? (rest ls))))))
+
+(defn query-to-map [query]
+  (split-list-at keyword? query))
+
+(defn clause-item [varmap item]
+  (if (symbol? item)
+    (or (varmap item) '_)
+    item))
+
+(defn pattern-from-clause [varmap clause]
+  (vec (map (partial clause-item varmap) clause)))
+
+(defn patterns-from-where [varmap where]
+  (map (partial pattern-from-clause varmap) where))
+
+(defn deep-list? [x]
+  (cond
+   (list? x) true
+   (coll? x) (if (empty? x) false
+                 (or (deep-list? (first x))
+                     (deep-list? (vec (rest x)))))))
+
+(defn q-pattern-gen [query vars]
+  (let [qm            (query-to-map query)
+        simple-query? (not (deep-list? (:where qm)))
+        varmap        (if (and (:in qm) (> (count (:in qm)) 1))
+                        (zipmap (rest (:in qm)) vars)
+                        {})]
+    (if simple-query?
+      (patterns-from-where varmap (:where qm))
+      [[]])))
+
+
+(q-pattern-gen '[:find ?name ?group_name
+                 :in $ ?p ?club
+                 :where
+                 [?p :person/name ?name]
+                 [?p :person/group ?g]
+                 [?g :group/name ?group_name]
+                 [?g :group/club ?club]]
+               [3443 "Bozo Club"])
+
+
+(defn take-until [ls until?]
+  (if (or (empty? ls) (until? (first ls)))
+    []
+    (cons (first ls) (take-until (rest ls) until?))))
+
+(defn pack [ls]
+  (if (empty? ls)
+    []
+    (let [t (take-until ls #(not= (first ls) %))]
+      (cons t (pack (nthrest ls (count t)))))))
+
+(defn encode-packed [ls]
+  (if (empty? ls)
+    []
+    (cons
+     (let [c (count (first ls))]
+       (if (= c 1)
+         (ffirst ls)
+         [(count (first ls)) (ffirst ls)]))
+     (encode-packed (rest ls)))))
+
+(defn encode [ls]
+  (encode-packed (pack ls)))
+
+
+(decode (encode [1 1 2 2 2 3 3 3 3 3 4 5 5 5]))
+(decode (encode "aaabcccccdddeeefffffg"))
+
+(defn decode [ls]
+  (if (empty? ls)
+    []
+    (concat
+     (if (coll? (first ls))
+         (take (ffirst ls) (repeat (second (first ls))))
+         [(first ls)])
+     (decode (rest ls)))))
+
+

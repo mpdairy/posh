@@ -3,7 +3,9 @@
   (:require [goog.dom :as gdom]
             [reagent.core :as r]
             [datascript.core :as d]
-            [posh.datom-match :refer [datom-match? any-datoms-match? query-symbol?]]))
+            [posh.datom-match :refer [datom-match? any-datoms-match? query-symbol?]]
+            [posh.pull-pattern-gen :as pull-gen]
+            [posh.q-pattern-gen :as q-gen]))
 
 (def posh-conn (atom (d/create-conn)))
 
@@ -47,7 +49,8 @@
 
 (defn transact! [conn tx]
   (swap! transactions-buffer
-         #(update % conn (comp vec (partial concat (clean-tx tx))))))
+         #(update % conn (comp vec (partial concat (clean-tx tx)))))
+  [:span])
 
 (declare try-all-before-tx!)
 
@@ -110,14 +113,12 @@
             (deep-map #(or (vars %) %) pull-syntax))
           (or (vars entity) entity)))
 
-;; in the future this will return some restricing tx patterns
-(defn generate-tx-patterns-from-pull [pull-pattern entity-id]
-  [[]])
-
 (defn pull-tx [conn patterns pull-pattern entity-id]
   (if-let [r (@established-reactions [:pull-tx conn patterns pull-pattern entity-id])]
     r
-    (let [new-reaction
+    (let [patterns (or patterns
+                       (pull-gen/pull-pattern-gen pull-pattern entity-id))
+          new-reaction
           (let [saved-pull (atom (when (not (or (query-symbol? entity-id)
                                                 (deep-find query-symbol? pull-pattern)))
                                    (d/pull (d/db conn) pull-pattern entity-id)))]
@@ -146,13 +147,13 @@
          (cons db (or args []))))
 
 ;; in the future this will return some restricing tx patterns
-(defn generate-tx-patterns-from-q [query & args]
-  [[]])
 
 (defn q-tx [conn patterns query & args]
   (if-let [r (@established-reactions [:q-tx conn patterns query args])]
     r
-    (let [new-reaction
+    (let [patterns (or patterns
+                       (q-gen/q-pattern-gen query args))
+          new-reaction
           (let [saved-q    (atom (if (empty? (filter query-symbol? args))
                                    (build-query (d/db conn) query args)
                                    #{}))]
@@ -176,7 +177,7 @@
   (apply (partial
           q-tx
           conn
-          (apply (partial generate-tx-patterns-from-q query) args)
+          nil
           query)
          args))
 
