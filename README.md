@@ -16,6 +16,19 @@ database is updated with relevant data.
 For those who don't know, DataScript is very similar to Datomic in
 features and operation and runs in ClojureScript.
 
+For example::
+```
+(defn person [conn person-id]
+  (let [p @(pull conn `[*] person-id)]
+    [:ul
+     [:li (:person/name p)]
+     [:li (:person/age p)]
+     [:li (:person/weight p)]]))
+```
+This component displays a list of a person's age, name, and weight. It
+only updates when any transactions changes something for an entity
+with `person-id`.
+
 ## Usage
 
 Start a Reagent project and include these dependencies
@@ -80,11 +93,11 @@ whenever `id` is updated and increases its age whenever clicked:
 
 ```clj
 (defn pull-person [id]
-  (let [p (pull conn '[*] id)]
-    (println "Person: " (:person/name @p))
+  (let [p @(pull conn '[*] id)]
+    (println "Person: " (:person/name p))
     [:div
-     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age @p))]])}
-     (:person/name @p) ": " (:person/age @p)]))
+     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
+     (:person/name p) ": " (:person/age p)]))
 ```
 
 ### q
@@ -102,8 +115,7 @@ By default, the database at the time of the transaction is implicitly
 passed in as the first arg.
 
 Posh's `q` calls `q-tx` but auto-generates the `tx-pattern`
-by looking at the query. (Currently it just generates `[[]]`,
-which matches any tx datom, but in the future it will be smarter)
+by looking at the query.
 
 Below is an example of a component that shows a list of people's names
 who are younger than a certain age. It only attempts the query when
@@ -111,15 +123,15 @@ someone's age changes:
 
 ```clj
 (defn people-younger-than [old-age]
-  (let [young (q-tx conn [['_ :person/age]] '[:find [?name ...]
-                                              :in $ ?old
-                                              :where
-                                              [?p :person/age ?age]
-                                              [(< ?age ?old)]
-                                              [?p :person/name ?name]]
-                    old-age)]
+  (let [young @(q-tx conn [['_ :person/age]] '[:find [?name ...]
+                                               :in $ ?old
+                                               :where
+                                               [?p :person/age ?age]
+                                               [(< ?age ?old)]
+                                               [?p :person/name ?name]]
+                     old-age)]
     [:ul "People younger than 30:"
-     (for [n @young] ^{:key n} [:li n])]))
+     (for [n young] ^{:key n} [:li n])]))
 ```
 
 Or, if you called the same query with just `q`:
@@ -155,12 +167,12 @@ from 10 (retracted).
 
 ```clj
 (defn ten-year-olds []
-  (let [db   (db-tx conn '[[_ :person/age 10]])
-        kids (map (partial d/entity @db)
+  (let [db   @(db-tx conn '[[_ :person/age 10]])
+        kids (map (partial d/entity db)
                   (d/q '[:find [?p ...] :where
                          [?p :person/age ?a]
                          [(= ?a 10)]]
-                       @db))]
+                       db))]
     [:ul "These kids are ten years old:"
      (for [k kids]
        ^{:key (:db/id k)} [:li (:person/name k)])]))
@@ -173,8 +185,8 @@ entity id is transacted.
 
 ```clj
 (defn person [id]
-  (let [db (db-tx conn [[id]])
-        p  (d/entity @db id)]
+  (let [db @(db-tx conn [[id]])
+        p  (d/entity db id)]
     [:div
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) " -- " (:person/age p)]))
