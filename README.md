@@ -16,7 +16,9 @@ database is updated with relevant data.
 For those who don't know, DataScript is very similar to Datomic in
 features and operation and runs in ClojureScript.
 
-For example::
+For example, below is a component that displays a list of a person's age, name,
+and weight. It only updates when any transactions change something
+for an entity with `person-id`.
 ```
 (defn person [conn person-id]
   (let [p @(pull conn `[*] person-id)]
@@ -25,9 +27,6 @@ For example::
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
 ```
-This component displays a list of a person's age, name, and weight. It
-only updates when any transactions changes something for an entity
-with `person-id`.
 
 ## Usage
 
