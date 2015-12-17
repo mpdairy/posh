@@ -1,29 +1,35 @@
 # Posh
 
-Posh is a little library that lets you use a DataScript database to
-keep your application state in Reagent.  It can be incorporated with
-your existing Reagent project and mixed with regular Reagent atoms.
-Using Posh, components can have access to the
-complete database, but watch the database's transaction report and
-only update when pertinent changes occur.
+Posh is a clojurescript/react library that lets you use a single
+DataScript database to store your app state. Components access the
+data they need to render by calling DataScript queries with `q` or
+`pull` and are only updated when the query changes. `transact!` is
+used within components to change the state.
 
-This gives your components all the power of DataScript queries,
-entities, pull syntax, etc, but it's still very fast, even with a
-large database.
+Posh uses Reagent and can be integrated with your current Reagent
+project. Because it uses a single app state it is scalable and
+powerful like Om or re-frame, but has more expressive data retrieval
+and the ability for components to affect global state.
+
+Posh is fast because the in-component data queries only occur when the
+database is updated with relevant data.
+
+For those who don't know, DataScript is very similar to Datomic in
+features and operation and runs in ClojureScript.
 
 ## Usage
 
 Start a Reagent project and include these dependencies
 
 ```clj
-[posh "0.3.2"]
+[posh "0.3.3"]
 [datascript "0.13.3"]
 ```
 Require in Reagent app files:
 ```clj
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [pull q db-tx pull-tx q-tx when-tx! transact! posh!]]
+            [posh.core :refer [pull q db-tx pull-tx q-tx after-tx! before-tx! transact! posh!]]
             [datascript.core :as d]))
 ```
 
@@ -69,8 +75,6 @@ Would call:
 (pull-tx conn '[[1234 [:person/name :person/age]]]
          '[:person/name :person/age] 1234)
 ```
-(Note, `pull` currently just calls `pull-tx` with `[[]]`, which matches
-any datom, but in the near future it will be smarter)
 
 An example, that pulls all of the info from the entity with `id`
 whenever `id` is updated and increases its age whenever clicked:
@@ -179,30 +183,46 @@ entity id is transacted.
 
 (Note: the above component should have just used posh's `pull`)
 
-### when-tx!
+### after-tx!
 
-`(when-tx! conn [tx patterns]  handler-fn)`
+`(after-tx! conn [tx patterns] handler-fn)`
 
-`when-tx!` sets up a listener that watches for a transaction pattern match, then
+`after-tx!` sets up a listener that watches for a transaction pattern match, then
 calls `(handler-fn matching-tx-datom db-after)`.
 
 ```clj
 ;; congratulates any one who turns 21
-(when-tx! conn
+(after-tx! conn
           '[[_ :person/age 21 _ true]]
           (fn [[e a v] db]
             (js/alert (str "You have come of age, "
                            (:person/name (d/entity db e)) "."))))
 ```
 
-You could use `when-tx!` to handle events or to trigger communication
+You could use `after-tx!` to handle events or to trigger communication
 with the server.
+
+### before-tx!
+
+`(before-tx! conn [tx patterns] handler-fn)`
+
+`before-tx!` is like `after-tx!` except it reads the transactions
+before they are committed to the database. Any calls to Posh's
+`transact!` (below) from within the `handler-fn` will be appended to the
+transaction batch and will not pass through any listeners created with
+`before-tx!`.
 
 ### transact!
 
-Right now, `transact!` just calls `d/transact!`, but maybe in the future
-it might have to do some pre-transaction filtering or something, so
-heck you might as well start using it.
+`transact!` operates just like DataScript's `transact!`:
+
+```
+(transact! conn [[:db/add 123 :person/name "Jim"]])
+```
+
+Except Posh's `transact!` buffers its transactions in 1/60 second intervals, passes them
+through any handlers set up in `before-tx!`, then actually transacts
+them to the database.
 
 ## Advanced Examples
 
@@ -261,7 +281,7 @@ This can be called with any entity and its text attrib, like
 The datom pattern matcher is used to find if any pertinant datoms have
 been transacted in the database. If you stick to just using `q` and `pull`,
 you probably won't need to do any pattern matching, but you might want it for
-`when-tx!` and most certainly you'll want it if you use `db-tx`.
+`after-tx!` and most certainly you'll want it if you use `db-tx`.
 
 The pattern can either be a list of patterns or a tuple of a list of patterns and a query.
 
@@ -288,8 +308,8 @@ empty map if there are no variables.
 ### Datom Matching
 
 Here are examples of all the ways patterns can match. The
-examples use `db-tx`, though `pull-tx`, `q-tx`, and `when-tx!` use the
-same pattern matching.
+examples use `db-tx`, though `pull-tx`, `q-tx`, `after-tx!`, and
+`before-tx!` use the same pattern matching.
 
 ```clj
 
@@ -367,7 +387,7 @@ same pattern matching.
 ### Query Matching
 
 Note: You shouldn't need query matching when using `pull`s and `q`s, but it
-is useful for `db-tx` and `when-tx!`.
+is useful for `db-tx`, `after-tx!`, and `before-tx!`.
 
 In some cases you might want to do a little querying to get some extra
 information. For example, suppose we have a bookshelf component that
@@ -542,7 +562,7 @@ an attribute.
 
 The problem with this is that when you reload the app, nothing will
 appear until something is new is transacted. It would be better to query for
-the last changed person or to set up a `when-tx!` that updates some
+the last changed person or to set up a `after-tx!` that updates some
 entry in the db that points to the last changed person.
 
 #### q-tx
