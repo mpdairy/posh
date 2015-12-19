@@ -34,7 +34,7 @@ database changed an attribute of the `person-id` entity:
 
 [Posh Todo List](https://github.com/mpdairy/posh-todo) - A todo list
 with categories, edit boxes, checkboxes, and multi-stage delete
-buttons ([Live Demo](http://otherway.org/posh-todo/)).
+buttons ([live demo](http://otherway.org/posh-todo/)).
 
 ## Usage
 
