@@ -6,14 +6,13 @@ data they need to render by calling DataScript queries with `q` or
 `pull` and are only updated when the query changes. `transact!` is
 used within components to change the global state. If you are familiar
 with Datomic, you will find Posh incredibly easy to use. If not, it's
-worth learning because of the power and versatility it will give your front-end.
+worth learning because of the power and versatility it will give your components.
 
 Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
 project. Because it uses a single app state like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
 large, extensible apps and reusable components, with the added
-benefit of being much simpler to use (if you are familiar with
-Datomic) and having a more expressive data retrieval and state
-updating syntax.
+benefit of being much simpler to use and having a more expressive data
+retrieval and state updating syntax.
 
 Posh is also very fast because the in-component data queries only run when the
 database is updated with relevant data (found by pattern matching on the
@@ -35,11 +34,11 @@ database changed an attribute of the `person-id` entity:
 
 [Posh Todo List](https://github.com/mpdairy/posh-todo) - A todo list
 with categories, edit boxes, checkboxes, and multi-stage delete
-buttons ([live demo](http://otherway.org/posh-todo/)).
+buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 
 ## Usage
 
-Start a Reagent project and include these dependencies
+Start a Reagent project and include these dependencies:
 
 ```clj
 [posh "0.3.3"]
@@ -126,7 +125,7 @@ specified in the query. It must be called within a Reagent component
 and will only update the component whenever the data it is querying
 has changed. See
 [Datomic's Queries and Rules](http://docs.datomic.com/query.html) for
-how to do datalog queries. `args` are optional extra variables that DataScript's `q` look for
+how to do datalog queries. `args` are optional extra variables that DataScript's `q` looks for
 after the `[:find ...]` query if the query has an `:in` specification.
 By default, the database at the time of the latest transaction is implicitly
 passed in as the first arg, which will correspond with `$` in the
@@ -179,6 +178,21 @@ Or, if you called the same query with just `q`:
 In this case, `q` would run the query every time there is a
 transaction in the database because one of the clauses is a function
 call `(< ?age ?old)`.
+
+An example of a simple call would be:
+
+```clj
+(q conn '[:find [?name ...]
+          :in $ ?age
+          :where
+          [?p :person/age ?age]
+          [?p :person/name ?name]]
+   age)
+```
+This finds the name of every person whose `:person/age` is `age`. It
+will re-query whenever anyone's `:person/age` changes to or from `age`
+or whenever anybody's `:person/name` changes. 
+
 
 ### db-tx
 
