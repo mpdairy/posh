@@ -5,7 +5,8 @@ Posh is a ClojureScript / React library that lets you use a single
 data they need to render by calling DataScript queries with `q` or
 `pull` and are only updated when the query changes. `transact!` is
 used within components to change the global state. If you are familiar
-with Datomic, you will find Posh incredibly powerful easy to use.
+with Datomic, you will find Posh incredibly easy to use. If not, it's
+well worth learning!
 
 Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
 project. Because it uses a single app state like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
