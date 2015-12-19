@@ -908,3 +908,10 @@
      (decode (rest ls)))))
 
 
+
+(defn person [conn person-id]
+  (let [p @(pull conn `[*] person-id)]
+    [:ul
+     [:li (:person/name p)]
+     [:li (:person/age p)]
+     [:li (:person/weight p)]]))

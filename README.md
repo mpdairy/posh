@@ -1,24 +1,27 @@
 # Posh
 
 Posh is a ClojureScript / React library that lets you use a single
-DataScript database to store your app state. Components access the
+[DataScript](https://github.com/tonsky/datascript/) database to store your app state. Components access the
 data they need to render by calling DataScript queries with `q` or
 `pull` and are only updated when the query changes. `transact!` is
-used within components to change the state.
+used within components to change the global state. If you are familiar
+with Datomic, you will find Posh incredibly powerful easy to use.
 
-Posh uses Reagent and can be integrated with your current Reagent
-project. Because it uses a single app state it is scalable and
-powerful like Om or re-frame, but has more expressive data retrieval.
+Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
+project. Because it uses a single app state like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
+large, extensible apps and reusable components, with the added
+benefit of being much simpler to use (if you are familiar with
+Datomic) and having a more expressive data retrieval and state
+updating syntax.
 
-Posh is fast because the in-component data queries only occur when the
-database is updated with relevant data.
-
-For those who don't know, DataScript is very similar to Datomic in
-features and operation and runs in ClojureScript.
+Posh is also very fast because the in-component data queries only run when the
+database is updated with relevant data (found by pattern matching on the
+tx report).
 
 For example, below is a component that displays a list of a person's age, name,
-and weight. It only updates when any transactions have changed something
-for the `person-id` entity:
+and weight. The component will only re-render when something in the
+database changed an attribute of the `person-id` entity:
+
 ```
 (defn person [conn person-id]
   (let [p @(pull conn '[*] person-id)]
@@ -27,6 +30,9 @@ for the `person-id` entity:
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
 ```
+## Examples
+
+[Posh Todo List](https://github.com/mpdairy/posh-todo)
 
 ## Usage
 
@@ -69,25 +75,26 @@ for that.
 
 `(pull [conn] [pull pattern] [entity id])`
 
-`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
+`pull` retrieves the data specified in `pull-pattern` for the entity
+with `entity-id`.  `pull` can be called from within any Reagent
+component and will re-render the component only when the pulled
+information has changed.
 
-`pull-tx` is just like DataScript's `pull` but it will only pull when
-the `tx pattern` matches a datom in the tx report. It remembers the last
-pull and only updates the hosting component if the new pull is different.
+Posh's `pull` operates just like Datomic / Datascript's `pull` except it takes a
+`conn` instead of a `db`. (See
+[Datomic's pull](http://docs.datomic.com/pull.html))
 
-Posh's `pull` calls `pull-tx` but generates the tx datom matching
-pattern by looking at the pull pattern. For example:
+Posh's `pull` only attempts to pull any new data if there has been a
+transaction of any datoms that might have changed the data it is
+looking at. For example:
 
 ```clj
 (pull conn '[:person/name :person/age] 1234)
 ```
-Would call:
-```clj
-(pull-tx conn '[[1234 [:person/name :person/age]]]
-         '[:person/name :person/age] 1234)
-```
+Would only do a pull into Datascript if there has been a transaction
+changing `:person/name` or `:person/age` for entity `1234`.
 
-An example, that pulls all of the info from the entity with `id`
+Below is an example that pulls all of the info from the entity with `id`
 whenever `id` is updated and increases its age whenever clicked:
 
 ```clj
@@ -99,22 +106,45 @@ whenever `id` is updated and increases its age whenever clicked:
      (:person/name p) ": " (:person/age p)]))
 ```
 
+If you would like to fine-tune when `pull` actually attempts to pull
+new data, you can use `pull-tx`:
+
+`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
+
+Where `tx-pattern` is a datom matching pattern for the transaction
+queue. See the pattern-matching section below.
+
 ### q
 
 `(q [conn] [query] & args)`
 
+`q` queries for data from the database according to the rules
+specified in the query. It must be called within a Reagent component
+and will only update the component whenever the data it is querying
+has changed. See
+[Datomic's Queries and Rules](http://docs.datomic.com/query.html) for
+how to do datalog queries. `args` are optional extra variables that DataScript's `q` look for
+after the `[:find ...]` query if the query has an `:in` specification.
+By default, the database at the time of the latest transaction is implicitly
+passed in as the first arg, which will correspond with `$` in the
+`:in` clause.
+
+Whenever the database has changed, `q` will check the transacted
+datoms to see if anything relevant to its query has occured. If so,
+`q` runs Datascript's `q` and compares the new query to the old. If it
+is different, the hosting component will update with the new data.
+
+Posh's `q` looks at the query pattern and tries to make a pattern to
+identify relevant tx datoms. If there is anything complex in the
+query, such as function calls or `get-else`, it will have a
+non-restrictive pattern and will run the query whenever there has been
+a database change. To specify the matching pattern by hand, you can
+use `q-tx`:
+
 `(q-tx [conn] [tx pattern] [query] & args)`
 
-`q-tx` calls DataScript's `q` with the given query, but only if the
-`tx pattern` matches a transaction datom. If the result of the query is
-different than the last query, the hosting Reagent component will
-update. `args` are optional extra variables that DataScript's `q` look for
-after the `[:find ...]` query if the query has an `:in` specification.
-By default, the database at the time of the transaction is implicitly
-passed in as the first arg.
-
-Posh's `q` calls `q-tx` but auto-generates the `tx-pattern`
-by looking at the query.
+`q-tx` takes a `tx pattern` as its second argument (see the Pattern
+Matching section below).
 
 Below is an example of a component that shows a list of people's names
 who are younger than a certain age. It only attempts the query when
@@ -143,9 +173,9 @@ Or, if you called the same query with just `q`:
           [?p :person/name ?name]]
    old-age)
 ```
-`q` would generate the tx datom matching pattern `'[[_ :person/age]
-[_ :person/name]]`, which is more correct than the hand-specified
-pattern I used in `q-tx`.
+In this case, `q` would run the query every time there is a
+transaction in the database because one of the clauses is a function
+call `(< ?age ?old)`.
 
 ### db-tx
 
@@ -231,7 +261,7 @@ transaction batch and will not pass through any listeners created with
 ```
 
 Except Posh's `transact!` buffers its transactions in 1/60 second intervals, passes them
-through any handlers set up in `before-tx!`, then actually transacts
+through any handlers set up in `before-tx!`, then batch transacts
 them to the database.
 
 ## Advanced Examples
