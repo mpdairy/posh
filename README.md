@@ -9,7 +9,7 @@ with Datomic, you will find Posh incredibly easy to use. If not, it's
 worth learning because of the power and versatility it will give your components.
 
 Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
-project. Because it uses a single app state like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
+project. Because it uses a single database to store app state, like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
 large, extensible apps and reusable components, with the added
 benefit of being much simpler to use and having a more expressive data
 retrieval and state updating syntax.
