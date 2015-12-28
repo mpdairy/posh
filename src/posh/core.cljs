@@ -139,7 +139,7 @@
 
 (defn pull [conn pull-pattern entity-id]
   (pull-tx conn
-           (generate-tx-patterns-from-pull pull-pattern entity-id)
+           (pull-gen/pull-pattern-gen pull-pattern entity-id)
            pull-pattern entity-id))
 
 (defn build-query [db q args]
