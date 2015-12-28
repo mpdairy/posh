@@ -11,17 +11,3 @@ pom.xml.asc
 .hg/
 figwheel_server.log
 /resources/public/js
-
-/examples/drinkers/target
-/examples/drinkers/classes
-/examples/drinkers/checkouts
-/examples/drinkers/pom.xml
-/examples/drinkers/pom.xml.asc
-/examples/drinkers/*.jar
-/examples/drinkers/*.class
-/examples/drinkers/.lein-*
-/examples/drinkers/.nrepl-port
-/examples/drinkers/.hgignore
-/examples/drinkers/.hg/
-/examples/drinkers/figwheel_server.log
-/examples/drinkers/resources/public/js
