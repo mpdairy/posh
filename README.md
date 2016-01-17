@@ -30,7 +30,11 @@ database changed an attribute of the `person-id` entity:
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
 ```
-## Examples
+## Resources
+
+Posh chat room on Gitter: https://gitter.im/metasoarous/posh
+
+Examples:
 
 [Posh Todo List](https://github.com/mpdairy/posh-todo) - A todo list
 with categories, edit boxes, checkboxes, and multi-stage delete
