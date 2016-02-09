@@ -1,9 +1,37 @@
 (ns scratch
   (:require [datascript.core :as d]))
 
+(def adog (atom []))
+
+(swap! adog (partial cons :jim))
+(reset! adog [])
+
 (def conn (d/create-conn))
 
+(d/listen! conn :history1
+           (fn [tx-report]
+             (swap! adog (partial cons :one))))
 
+(d/listen! conn :history
+           (fn [tx-report]
+             (swap! adog (partial cons :two))))
+
+(d/transact! conn [[:db/add -1 :jim (rand)]])
+
+@adog
+
+(def dog (atom {:a 1 :b 2}))
+
+(defn abs [n] (max n (- n)))
+
+(defn not1 [n] (abs (- n 1)))
+
+(swap! dog #(if (= % 1) 0 1))
+
+
+(swap! dog dissoc :b)
+
+(dissoc {:a 1 :b 2} :a)
 (def posh-conns (atom {}))
 (defn init! [conn]
   ;;(reset! tx-listeners @newly-registered-tx-listeners)
@@ -907,6 +935,53 @@
          [(first ls)])
      (decode (rest ls)))))
 
+(defn drop-helper [ls n a]
+  (if (empty? ls)
+    []
+    (if (= a n)
+      (drop-helper (rest ls) n 1)
+      (cons (first ls) (drop-helper (rest ls) n (inc a))))))
+
+(drop-helper (range 1 20) 2 1)
+
+(defn mesplit [ls n fls]
+  (if (= n 0)
+    [fls ls]
+    (mesplit (rest ls) (dec n) (cons (first ls) fls))))
+
+(mesplit (range 1 20) 5 [])
+
+(defn mesplit [ls n]
+  [(take n ls) (drop n ls)])
+
+(mesplit (range 1 20) 5)
+
+(defn meslice [ls start end]
+  (cond
+   (> start 0) (meslice (rest ls) (dec start) end)
+   (> end 0) (cons (first ls) (meslice (rest ls) 0 (dec end)))
+   :else []))
+
+(meslice (range 1 20) 4 12)
+
+
+(defn rotate [ls n]
+  (if (>= n 0)
+    (concat (drop n ls) (take n ls))
+    (concat (drop (+ (count ls) n) ls)
+            (take (+ (count ls) n) ls))))
+
+(rotate (range 1 20) -2)
+
+(for [n (range 1 20)]
+  n)
+
+
+
+(defn tails [ls]
+  (if (empty? ls)
+    []
+    (cons ls (tails (rest ls)))))
 
 
 (defn person [conn person-id]
@@ -915,3 +990,64 @@
      [:li (:person/name p)]
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
+
+
+(for [x (range 5)
+      y (range 5)
+      :when (not= x y)]
+  [x y])
+
+
+(defn without [ls a]
+  (cond
+   (empty? ls) []
+   (= a (first ls)) (without (rest ls) a)
+   :else (cons (first ls) (without (rest ls) a))))
+
+(without (range 10) 7)
+
+
+(defn groups-of [ls n]
+  (if (= n 0)
+    [[]]
+    (for [a ls
+          g (groups-of (remove #(= % a) ls) (dec n))]
+      (cons a g))))
+
+(->> (groups-of (range 5) 3)
+     disjoint)
+
+(defn disjoint [xss]
+  (->> xss
+       (map set)
+       set
+       vec
+       (map vec)))
+
+(defn disjoint [xss]
+  (if (coll? (first xss))
+    (set (map disjoint xss))
+    (set xss)))
+
+(defn groups [ls ns]
+  (if (empty? ns)
+    [[]]
+    (for [g (disjoint (groups-of ls (first ns)))
+          r (groups (remove (set g) ls) (rest ns))]
+      (cons g r))))
+
+(count (groups (range 9) [2 2 5]))
+
+(defn exclude [ls n]
+  (if (= n 0)
+    (rest ls)
+    (cons (first ls) (exclude (rest ls) (dec n)))))
+
+(defn rand-select [ls n]
+  (if (= 0 n)
+    []
+    (let [r (rand-int (count ls))]
+      (cons (nth ls r) (rand-select (exclude ls r) (dec n))))))
+
+
+

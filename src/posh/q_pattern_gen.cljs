@@ -32,16 +32,12 @@
 (defn patterns-from-where [varmap where]
   (map (partial pattern-from-clause varmap) where))
 
-(defn deep-list? [x]
-  (cond
-   (list? x) true
-   (coll? x) (if (empty? x) false
-                 (or (deep-list? (first x))
-                     (deep-list? (vec (rest x)))))))
+(defn complex-query? [query]
+  (some #(some coll? %) query))
 
 (defn q-pattern-gen [query vars]
   (let [qm            (query-to-map query)
-        simple-query? (not (deep-list? (:where qm)))
+        simple-query? (not (complex-query? (:where qm)))
         varmap        (if (and (:in qm) (> (count (:in qm)) 1))
                         (zipmap (rest (:in qm)) vars)
                         {})]
@@ -49,4 +45,16 @@
       (patterns-from-where varmap (:where qm))
       [[]])))
 
+(comment
+  (def test-query '[:find [?p ...] :where [?p :person/name _]])
 
+  
+  ( (:where (query-to-map test-query)))
+
+  (q-pattern-gen '[:find [?p ...] :where [?p :person/name _]] nil)
+
+  (->> '[:find [?p ...] :where [?p :person/name _]]
+       second
+       second
+       symbol?)
+  )

@@ -5,9 +5,10 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "1.7.170"]
+                 [org.clojure/core.async "0.2.374"]
                  [reagent "0.5.1"]
                  [datascript "0.13.3"]
-                 ;;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
+                 ;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
                  ]
   :plugins [[lein-cljsbuild "1.1.1"]]
   :cljsbuild {
