@@ -55,14 +55,16 @@
 ;; all of these memoize based on the pattern, so don't use anonymous
 ;; functions unless you are just going to call the reaction builder once
 
+
 ;; db-tx
 ;; returns :db-after of any new tx that matches pattern
 
 (defn db-tx [conn patterns]
   (let [reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
-        last-tx-report   (get-atom conn :last-tx-report)]
-    (if-let [r (@reaction-buffers [:db-tx patterns])]
+        last-tx-report   (get-atom conn :last-tx-report)
+        query-key        [:db-tx patterns]]
+    (if-let [r (@reaction-buffers query-key)]
       r
       (let [new-reaction
             (let [saved-db (atom (d/db conn))]
@@ -74,13 +76,11 @@
                    (reset! saved-db (:db-after @last-tx-report))
                    @saved-db))
                :on-dispose (fn [_ _]
-                             (swap! active-queries disj [:db-tx patterns])
-                             (swap! reaction-buffers
-                                    dissoc
-                                    [:db-tx patterns]))))]
-        (swap! active-queries conj [:db-tx patterns])
+                             (swap! active-queries disj query-key)
+                             (swap! reaction-buffers dissoc query-key))))]
+        (swap! active-queries conj query-key)
         (swap! reaction-buffers merge
-               {[:db-tx patterns] new-reaction})
+               {query-key new-reaction})
         new-reaction))))
 
 (defn deep-find [f x]
@@ -108,11 +108,13 @@
 (defn pull-tx [conn patterns pull-pattern entity-id]
   (let [reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
-        last-tx-report   (get-atom conn :last-tx-report)]
-    (if-let [r (@reaction-buffers [:pull-tx patterns pull-pattern entity-id])]
+        last-tx-report   (get-atom conn :last-tx-report)
+        storage-key      [:pull patterns pull-pattern entity-id]]
+    (if-let [r (@reaction-buffers storage-key)]
       r
-      (let [patterns (or patterns
-                         (pull-gen/pull-pattern-gen pull-pattern entity-id))
+      (let [genpatterns     (or patterns
+                             (pull-gen/pull-pattern-gen pull-pattern entity-id))
+            query-key    [:pull genpatterns pull-pattern entity-id] 
             new-reaction
             (let [saved-pull (atom (when (not (or (query-symbol? entity-id)
                                                   (deep-find query-symbol? pull-pattern)))
@@ -121,7 +123,7 @@
                (fn []
                  (if-let [vars (any-datoms-match?
                                 (:db-before @last-tx-report)
-                                patterns
+                                genpatterns
                                 (:tx-data @last-tx-report))]
                    (let [new-pull (build-pull (:db-after @last-tx-report)
                                               pull-pattern entity-id vars)]
@@ -130,14 +132,10 @@
                        @saved-pull))
                    @saved-pull))
                :on-dispose (fn [_ _]
-                             (swap! active-queries disj
-                                    [:pull patterns pull-pattern entity-id])
-                             (swap! reaction-buffers
-                                    dissoc
-                                    [:pull-tx patterns pull-pattern entity-id]))))]
-        (swap! active-queries conj [:pull patterns pull-pattern entity-id])
-        (swap! reaction-buffers merge
-               {[:pull-tx patterns pull-pattern entity-id] new-reaction})
+                             (swap! active-queries disj query-key)
+                             (swap! reaction-buffers dissoc storage-key))))]
+        (swap! active-queries conj query-key)
+        (swap! reaction-buffers merge {storage-key new-reaction})
         new-reaction))))
 
 (defn pull [posh-conn pull-pattern entity-id]
@@ -154,11 +152,13 @@
 (defn q-tx [conn patterns query & args]
   (let [reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
-        last-tx-report   (get-atom conn :last-tx-report)]
-    (if-let [r (@reaction-buffers [:q-tx patterns query args])]
+        last-tx-report   (get-atom conn :last-tx-report)
+        storage-key      [:q patterns query args]]
+    (if-let [r (@reaction-buffers storage-key)]
       r
-      (let [genpatterns (or patterns
-                            (q-gen/q-pattern-gen query args))
+      (let [genpatterns  (or patterns
+                             (q-gen/q-pattern-gen query args))
+            query-key    [:q genpatterns query args]
             new-reaction
             (let [saved-q    (atom (if (empty? (filter query-symbol? args))
                                      (build-query (d/db conn) query args)
@@ -177,13 +177,10 @@
                        @saved-q))
                    @saved-q))
                :on-dispose (fn [_ _]
-                             (swap! active-queries disj [:q genpatterns query args])
-                             (swap! reaction-buffers
-                                    dissoc
-                                    [:q-tx patterns query args]))))]
-        (swap! active-queries conj [:q genpatterns query args])
-        (swap! reaction-buffers merge
-               {[:q-tx patterns query args] new-reaction})
+                             (swap! active-queries disj query-key)
+                             (swap! reaction-buffers dissoc storage-key))))]
+        (swap! active-queries conj query-key)
+        (swap! reaction-buffers merge {storage-key new-reaction})
         new-reaction))))
 
 (defn q [posh-conn query & args]

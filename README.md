@@ -263,27 +263,33 @@ calls `(handler-fn matching-tx-datom db-after)`.
 You could use `after-tx!` to handle events or to trigger communication
 with the server.
 
-### before-tx!
-
-`(before-tx! conn [tx patterns] handler-fn)`
-
-`before-tx!` is like `after-tx!` except it reads the transactions
-before they are committed to the database. Any calls to Posh's
-`transact!` (below) from within the `handler-fn` will be appended to the
-transaction batch and will not pass through any listeners created with
-`before-tx!`.
-
 ### transact!
 
 `transact!` operates just like DataScript's `transact!`:
 
-```
+```clj
 (transact! conn [[:db/add 123 :person/name "Jim"]])
 ```
 
-Except Posh's `transact!` buffers its transactions in 1/60 second intervals, passes them
-through any handlers set up in `before-tx!`, then batch transacts
-them to the database.
+Posh's transact just calls DataScript's transact, but returns an empty
+`[:span]` so that it can easily be used inside the body of components.
+
+### active-queries
+
+Returns a Reagent atom that contains the set of descriptions of all the `q`, `pull`,
+and `db-tx` queries in any currently-rendered components.
+
+Their descriptions are represented as vectors that are the same order
+as the arguments to `db-tx`, `q-tx`, and `pull-tx`:
+
+```clj
+[:db-tx <tx-patterns>]
+
+[:pull <tx-patterns> <pull-pattern> <entity-identifier>]
+
+[:q <tx-pattern> <query> <args>]  ;; args is a vector of args
+                                  ;; or nil if none
+```
 
 ## Advanced Examples
 
