@@ -278,8 +278,8 @@ Posh's transact just calls DataScript's transact, but returns an empty
 
 `(active-queries conn)`
 
-Returns a Reagent atom that contains the set of descriptions of all the `q`, `pull`,
-and `db-tx` queries call from within any currently-rendered Reagent components.
+Returns a Reagent atom that contains a set of descriptions of all the `q`, `pull`,
+and `db-tx` queries called from within any currently-rendered Reagent components.
 
 Their descriptions are represented as vectors that are the same order
 as the arguments to `db-tx`, `q-tx`, and `pull-tx`:
