@@ -9,67 +9,45 @@
 
             [reagent.ratom :as ra]))
 
-;;(def posh-conns (atom {}))
-
 (declare try-after-tx)
 
 (defn posh! [conn]
-  "Returns a posh-conn"
-  (let [last-tx-report (r/atom [])
-        after-tx       (atom [])
-        aconn          (atom conn)]
-    (d/listen! @aconn :posh
+  (let [posh-vars
+        {:last-tx-report (r/atom [])
+         :after-tx (atom [])
+         :tx-buffer (atom [])
+         :reaction-buffers (atom {})
+         :active-queries (r/atom #{})}]
+    (d/listen! conn :posh-dispenser
+             (fn [var]
+               (when (keyword? var)
+                 (get posh-vars var))))
+    (d/listen! conn :posh
                (fn [tx-report]
                  (do
                    (doall
                     (for [tx-datom (:tx-data tx-report)
-                          after-tx @after-tx]
+                          after-tx @(:after-tx posh-vars)]
                       (try-after-tx (:db-before tx-report)
                                     (:db-after tx-report)
                                     tx-datom after-tx)))
-                   (reset! last-tx-report tx-report))))
-    {:last-tx-report    last-tx-report
-     :after-tx          after-tx
-     :conn              conn
-     :before-tx         (atom [])
-     :tx-buffer         (atom {})
-     :reaction-buffers  (atom {})
-     :active-queries    (r/atom #{})}))
+                   (reset! (:last-tx-report posh-vars) tx-report))))))
+
+;; Posh's state atoms are stored inside a listener in the meta data of
+;; the datascript conn
+
+(defn get-atom [conn var]
+  ((:posh-dispenser @(:listeners (meta conn))) var))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; transact
 
-;; might have to make this something that combines the tx's or adds
-;; filters or something. For now it's sort of pointless.
-
-(def transactions-buffer (r/atom {}))
-
-(defn split-tx-map [tx-map]
-  (if (map? tx-map)
-    (let [id (:db/id tx-map)]
-      (map (fn [[k v]] [:db/add id k v]) (dissoc tx-map :db/id)))
-    [tx-map]))
-
-(defn clean-tx [tx]
-  (apply concat (map split-tx-map tx)))
+;; just calls d/transact! but returns a [:span] so that it doesn't
+;; bother your component.
 
 (defn transact! [conn tx]
-  (swap! transactions-buffer
-         #(update % conn (comp vec (partial concat (clean-tx tx)))))
+  (d/transact! conn tx)
   [:span])
-
-(declare try-all-before-tx!)
-
-(defn do-transaction! [conn]
-  (let [tx (@transactions-buffer conn)]
-    (when tx
-      (let [_  (try-all-before-tx! conn tx)
-            tx (@transactions-buffer conn)]
-        (swap! transactions-buffer #(dissoc % conn))
-        (d/transact! conn tx)))))
-
-(defn update-transactions! []
-  (doall (map (fn [[conn]] (do-transaction! conn)) @transactions-buffer)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; reactions
@@ -80,28 +58,26 @@
 ;; db-tx
 ;; returns :db-after of any new tx that matches pattern
 
-(defn db-tx [posh-conn patterns]
-  (let [conn             (:conn posh-conn)
-        reaction-buffers (:reaction-buffers posh-conn)
-        active-queries   (:active-queries posh-conn)]
+(defn db-tx [conn patterns]
+  (let [reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)]
     (if-let [r (@reaction-buffers [:db-tx patterns])]
       r
       (let [new-reaction
             (let [saved-db (atom (d/db conn))]
               (ra/make-reaction
                (fn []
-                 (if (any-datoms-match? (:db-before @(:last-tx-report posh-conn))
+                 (if (any-datoms-match? (:db-before @last-tx-report)
                                         patterns
-                                        (:tx-data @(:last-tx-report posh-conn)))
-                   (reset! saved-db (:db-after @(:last-tx-report posh-conn)))
+                                        (:tx-data @last-tx-report))
+                   (reset! saved-db (:db-after @last-tx-report))
                    @saved-db))
                :on-dispose (fn [_ _]
                              (swap! active-queries disj [:db-tx patterns])
                              (swap! reaction-buffers
                                     dissoc
-                                    [:db-tx patterns])
-                             (println "DB-TX GOODBYE " query))
-               ))]
+                                    [:db-tx patterns]))))]
         (swap! active-queries conj [:db-tx patterns])
         (swap! reaction-buffers merge
                {[:db-tx patterns] new-reaction})
@@ -129,10 +105,10 @@
             (deep-map #(or (vars %) %) pull-syntax))
           (or (vars entity) entity)))
 
-(defn pull-tx [posh-conn patterns pull-pattern entity-id]
-  (let [conn             (:conn posh-conn)
-        reaction-buffers (:reaction-buffers posh-conn)
-        active-queries   (:active-queries posh-conn)]
+(defn pull-tx [conn patterns pull-pattern entity-id]
+  (let [reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)]
     (if-let [r (@reaction-buffers [:pull-tx patterns pull-pattern entity-id])]
       r
       (let [patterns (or patterns
@@ -144,10 +120,10 @@
               (ra/make-reaction
                (fn []
                  (if-let [vars (any-datoms-match?
-                                (:db-before @(:last-tx-report posh-conn))
+                                (:db-before @last-tx-report)
                                 patterns
-                                (:tx-data @(:last-tx-report posh-conn)))]
-                   (let [new-pull (build-pull (:db-after @(:last-tx-report posh-conn))
+                                (:tx-data @last-tx-report))]
+                   (let [new-pull (build-pull (:db-after @last-tx-report)
                                               pull-pattern entity-id vars)]
                      (if (not= @saved-pull new-pull)
                        (reset! saved-pull new-pull)
@@ -175,12 +151,10 @@
 
 ;; in the future this will return some restricing tx patterns
 
-(def test-query '[:find [?p ...] :where [?p :person/name _]])
-
-(defn q-tx [posh-conn patterns query & args]
-  (let [conn             (:conn posh-conn)
-        reaction-buffers (:reaction-buffers posh-conn)
-        active-queries   (:active-queries posh-conn)]
+(defn q-tx [conn patterns query & args]
+  (let [reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)]
     (if-let [r (@reaction-buffers [:q-tx patterns query args])]
       r
       (let [genpatterns (or patterns
@@ -192,10 +166,10 @@
               (ra/make-reaction
                (fn []
                  (if-let [vars (any-datoms-match?
-                                (:db-before @(:last-tx-report posh-conn))
+                                (:db-before @last-tx-report)
                                 genpatterns
-                                (:tx-data @(:last-tx-report posh-conn)))]
-                   (let [new-q (build-query (:db-after @(:last-tx-report posh-conn))
+                                (:tx-data @last-tx-report))]
+                   (let [new-q (build-query (:db-after @last-tx-report)
                                             query
                                             (map #(or (vars %) %) args))]
                      (if (not= @saved-q new-q)
@@ -207,13 +181,10 @@
                              (swap! reaction-buffers
                                     dissoc
                                     [:q-tx patterns query args]))))]
-        ;;(println "Qt HELLO " genpatterns query args)
         (swap! active-queries conj [:q genpatterns query args])
         (swap! reaction-buffers merge
                {[:q-tx patterns query args] new-reaction})
         new-reaction))))
-
-
 
 (defn q [posh-conn query & args]
   (apply (partial
@@ -233,31 +204,13 @@
   (when (datom-match? db-before patterns tx-datom)
     (handler-fn tx-datom db-after)))
 
-(defn try-before-tx [conn tx-datom [patterns handler-fn]]
-  (if (datom-match? (d/db conn) patterns tx-datom)
-    (handler-fn tx-datom (d/db conn))))
-
-;;;; ADD FILTER-BEFORE-TX
-
-(defn try-all-before-tx! [conn txs]
-  (concat
-   (remove
-    nil?
-    (doall
-     (for [tx-datom txs
-           before-tx @(:before-tx (@posh-conns conn))]
-       (try-before-tx conn tx-datom before-tx))))
-   txs))
-
 (defn after-tx! [conn patterns handler-fn]
-  (swap! (:after-tx (@posh-conns conn)) conj [patterns handler-fn]))
+  (swap! (get-atom conn :after-tx) conj [patterns handler-fn]))
 
-(defn before-tx! [conn patterns handler-fn]
-  (swap! (:before-tx (@posh-conns conn)) conj [patterns handler-fn]))
+;;;; Active Queries:
 
+(defn active-queries [conn]
+  (get-atom conn :active-queries))
 
-
-;;;;; eventually this will be replaced with reagent's do-render:
-(js/setInterval update-transactions! 17)
 
 
