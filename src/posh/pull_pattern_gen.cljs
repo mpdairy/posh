@@ -35,10 +35,11 @@
 
    :else (pull-list (rest ls) ent-id)))
 
+
+
 (defn pull-pattern-gen [ls ent-id]
   (let [p (pull-list ls ent-id)]
     (if (some #{['_]} p)
       '[_]
       p)))
-
 

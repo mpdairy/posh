@@ -113,8 +113,10 @@
     (if-let [r (@reaction-buffers storage-key)]
       r
       (let [genpatterns     (or patterns
-                             (pull-gen/pull-pattern-gen pull-pattern entity-id))
-            query-key    [:pull genpatterns pull-pattern entity-id] 
+                                (pull-gen/pull-pattern-gen
+                                 pull-pattern
+                                 (d/entid @conn entity-id)))
+            query-key    [:pull genpatterns pull-pattern entity-id]
             new-reaction
             (let [saved-pull (atom (when (not (or (query-symbol? entity-id)
                                                   (deep-find query-symbol? pull-pattern)))
@@ -138,9 +140,9 @@
         (swap! reaction-buffers merge {storage-key new-reaction})
         new-reaction))))
 
-(defn pull [posh-conn pull-pattern entity-id]
-  (pull-tx posh-conn
-           (pull-gen/pull-pattern-gen pull-pattern entity-id)
+(defn pull [conn pull-pattern entity-id]
+  (pull-tx conn
+           nil
            pull-pattern entity-id))
 
 (defn build-query [db q args]
@@ -183,10 +185,10 @@
         (swap! reaction-buffers merge {storage-key new-reaction})
         new-reaction))))
 
-(defn q [posh-conn query & args]
+(defn q [conn query & args]
   (apply (partial
           q-tx
-          posh-conn
+          conn
           nil
           query)
          args))
