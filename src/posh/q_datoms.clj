@@ -2,7 +2,8 @@
   (:require [datascript.core :as d]))
 
 
-;;;;;;;;; Q-datoms  -- gets datoms for 
+;;;;;;;;; Q-datoms  -- gets datoms for a query
+
 
 (defn take-until [stop-at? ls]
   (if (or
@@ -126,4 +127,27 @@
          (create-q-datoms r eavs vars))))
 
 
+;;; q pattern gen ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn count-qvars [xs]
+  (cond
+   (empty? xs) {}
+   (coll? (first xs)) (merge-with + (count-qvars (first xs)) (count-qvars (rest xs)))
+   :else (merge-with +
+                     (when (qvar? (first xs)) {(first xs) 1})
+                     (count-qvars (rest xs)))))
+
+(defn fill-qvar-set [qvar results where]
+  (for [r results]
+    (let [vars (zipmap where r)]
+      (get vars qvar))))
+
+(defn q-pattern [query & args]
+  (let [qm    (query-to-map query)
+        where (normalize-all-eavs (:where qm))
+        eavs  (get-eavs where)
+        vars  (vec (get-all-vars eavs))
+        newqm (merge qm {:find vars :where where})
+        newq  (qm-to-query newqm)
+        r     (apply (partial d/q newq) args)]
+    eavs))
