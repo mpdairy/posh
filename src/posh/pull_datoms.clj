@@ -61,13 +61,13 @@
         (cond
          (and (not r?) (cardinality-one? db k))
          (concat
-          [[:db/add entity-id k (:db/id v)]]
+          [[entity-id k (:db/id v)]]
           (tx-datoms-for-pull-map db (:db/id v) v))
 
          (or r? (cardinality-many? db k))
          (concat
           (when (not r?)
-            (mapcat #(vector [:db/add entity-id k (:db/id %)]) v))
+            (mapcat #(vector [entity-id k (:db/id %)]) v))
           (mapcat #(tx-datoms-for-pull-map
                     db
                     (:db/id %)
@@ -80,8 +80,8 @@
        :else
        (concat
         (if (cardinality-many? db k)
-          (mapcat #(vector [:db/add entity-id k %]) v)
-          [[:db/add entity-id k v]])
+          (mapcat #(vector [entity-id k %]) v)
+          [[entity-id k v]])
         (tx-datoms-for-pull-map db entity-id (rest pull-map)))))))
 
 (defn generate-affected-tx-datoms-for-pull [db affected-pull]
@@ -94,11 +94,40 @@
 
 ;;;;; pull pattern generator
 
+(comment
+  (defn count-avs [patterns]
+    (if (empty? patterns)
+      {}
+      (merge-with + {(let [[e a v] (first patterns)] [a v]) 1}
+                  (count-avs (rest patterns)))))
+
+  (defn count-eas [patterns]
+    (if (empty? patterns)
+      {}
+      (merge-with + {(let [[e a] (first patterns)] [e a]) 1}
+                  (count-eas (rest patterns)))))
+
+  (defn reducible-patterns [pattern-counts]
+    (remove nil? (map (fn [[k v]] (when (> v 1) v) k) pattern-counts)))
+
+  (defn combine-ents [patterns])
+
+  (defn combine-patterns [patterns]
+    (let [avs (reducible-patterns (count-avs patterns))
+          eas (reducible-patterns (count-eas patterns))]
+      
+      )
+    ))
+
 (defn limit-spec? [x]
   (and (seq? x) (= (first x) 'limit)))
 
 (defn limit-attr [limit-spec]
   (second limit-spec))
+
+(def remove-limits
+  (partial
+   clojure.walk/postwalk (fn [x] (if (limit-spec? x) (limit-attr x) x))))
 
 (defn recursive-val? [v]
   (or (number? v) (= v '...)))

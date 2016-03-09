@@ -142,12 +142,60 @@
     (let [vars (zipmap where r)]
       (get vars qvar))))
 
+(defn seq-merge-with [f seq1 seq2]
+  (if (empty? seq1)
+    []
+    (cons (f (first seq1) (first seq2))
+          (seq-merge-with f (rest seq1) (rest seq2)))))
+
+(defn stack-vectors [vs]
+  (reduce (fn [stacked eav]
+            (seq-merge-with conj stacked eav))
+          (take (count (first vs)) (repeat #{})) vs))
+
+
+(defn pattern-from-eav [vars [e a v :as eav]]
+  (let [[qe qa qv] (map qvar? eav)]
+    [[e qe a qa v qv]]
+    (for [ee (if qe ['_ (get vars e)] [e])
+          aa (if qa ['_ (get vars a)] [a])
+          vv (if qv ['_ (get vars v)] [v])
+          :when (let [wildcard-count
+                      (reduce + (map #(if (= '_ %) 1 0) [ee aa vv]))
+                      exposed-qvars
+                      (reduce + (map (fn [[var? val]]
+                                       (if (and var? (not= val '_))
+                                         1
+                                         0))
+                                     [[qe ee] [qa aa] [qv vv]]))
+                      qvar-count (reduce + (map #(if % 1 0) [qe qa qv]))]
+                  (and (>= wildcard-count 1)
+                       (or (and (> qvar-count 1) (= 1 exposed-qvars))
+                           (<= qvar-count 1))
+                       (<= wildcard-count qvar-count)))]
+      [ee aa vv])))
+
+(defn patterns-from-eavs [vars patterns]
+  (mapcat #(pattern-from-eav vars %) patterns))
+
 (defn q-pattern [query & args]
-  (let [qm    (query-to-map query)
-        where (normalize-all-eavs (:where qm))
-        eavs  (get-eavs where)
-        vars  (vec (get-all-vars eavs))
-        newqm (merge qm {:find vars :where where})
-        newq  (qm-to-query newqm)
-        r     (apply (partial d/q newq) args)]
-    eavs))
+  (let [qm           (query-to-map query)
+        where        (normalize-all-eavs (:where qm))
+        in-vars      (zipmap (:in qm) args)
+        eavs         (clojure.walk/postwalk
+                      #(if-let [v (in-vars %)] v %) (get-eavs where))
+        vars         (vec (get-all-vars eavs))
+        newqm        (merge qm {:find vars :where where})
+        newq         (qm-to-query newqm)
+        qvar-count   (count-qvars eavs)
+        linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
+        r            (apply (partial d/q newq) args)
+        rvars        (zipmap
+                      vars
+                      (stack-vectors r))]
+    (for [[e a v] eavs]
+      e)
+    (clojure.walk/postwalk
+     #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
+     eavs)
+    rvars))
