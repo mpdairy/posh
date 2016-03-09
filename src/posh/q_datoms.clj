@@ -192,10 +192,8 @@
         r            (apply (partial d/q newq) args)
         rvars        (zipmap
                       vars
-                      (stack-vectors r))]
-    (for [[e a v] eavs]
-      e)
-    (clojure.walk/postwalk
-     #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
-     eavs)
-    rvars))
+                      (stack-vectors r))
+        prepped-eavs (clojure.walk/postwalk
+                      #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
+                      eavs)]
+    (patterns-from-eavs rvars prepped-eavs)))
