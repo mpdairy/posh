@@ -14,6 +14,8 @@
              :todo/numbers          {:db/cardinality :db.cardinality/many}
              :action/editing        {:db/cardinality :db.cardinality/many}})
 
+
+
 (def conn (d/create-conn schema))
 
 (def tempid (let [n (atom 0)] (fn [] (swap! n dec))))
@@ -155,7 +157,7 @@
 
 (comment
   (def qd
-    (qd/q-datoms '[:find ?task ?task-name ?list-name
+    (qd/q-datoms '[:find ?task ?task-name ?list-name ?owner-name
                    :in $ ?true ?owner-name
                    :where
                    [?p :person/name ?owner-name]
@@ -167,7 +169,31 @@
                    [?task :task/name ?task-name]]
                  @conn true "Matt"))
 
+  (qd/q-analyze [:results :datoms :patterns]
+                '[:find ?task ?task-name ?list-name
+                  :in $ ?true ?owner-name
+                  :where
+                  [?p :person/name ?owner-name]
+                  [?todo :todo/owner ?p]
+                  [?todo :todo/name ?list-name]
+                  [?cat  :category/todo ?todo]
+                  [?task :task/category ?cat]
+                  [?task :task/done ?true]
+                  [?task :task/name ?task-name]]
+                @conn true "Matt")
 
+  (d/q '[:find ?a ?c
+         :in [[?a ?b ?c] ...]]
+       [[1 :hey "jim"]
+        [2 :go  "batty"]
+        [3 :fry "wormwood"]])
+
+  (d/q {:find '[?task ?task-name ?list-name]
+        :in '[[[?todo ?cat ?list-name ?task ?task-name ?p] ...]]}
+       [[2 5 "Matt's List" 9 "Compose opera" 1]
+        [2 3 "Matt's List" 6 "Clean Dishes" 1]
+        [2 3 "Matt's List" 7 "Mop Floors" 1]])
+  
   (def conn2 (d/create-conn schema))
   (d/transact! conn2 qd)
   )
