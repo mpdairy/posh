@@ -1,5 +1,7 @@
 (ns posh.q-datoms
-  (:require [datascript.core :as d]))
+  (:require
+   [posh.util :as util]
+   [datascript.core :as d]))
 
 
 ;;;;;;;;; Q-datoms  -- gets datoms for a query
@@ -205,37 +207,38 @@
 ;;;;;;;; query
 
 
-(defn q-analyze [retrieve query & args]
-  (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
-    {:results (apply (partial d/q query) args)}
-    (let [qm           (if-not (map? query)
-                         (query-to-map query)
-                         query)
-          where        (normalize-all-eavs (:where qm))
-          in-vars      (zipmap (:in qm) args)
-          eavs         (get-eavs where)
-          vars         (vec (get-all-vars eavs))
-          newqm        (merge qm {:find vars :where where})
-          newq         (qm-to-query newqm)
-          r            (apply (partial d/q newqm) args)]
-      (merge
-       (when (some #{:datoms} retrieve)
-         {:datoms (create-q-datoms r eavs vars)})
-       (when (some #{:results} retrieve)
-         {:results
-          (d/q {:find (vec (:find qm))
-                :in [[vars '...]]}
-               (vec r))})
-       (when (some #{:patterns} retrieve)
-         (let
-             [eavs-ins     (clojure.walk/postwalk
-                            #(if-let [v (in-vars %)] v %) eavs)
-              qvar-count   (count-qvars eavs-ins)
-              linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
-              rvars        (zipmap
-                            vars
-                            (stack-vectors r))
-              prepped-eavs (clojure.walk/postwalk
-                            #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
-                            eavs-ins)]
-           {:patterns (patterns-from-eavs rvars prepped-eavs)}))))))
+(defn q-analyze [db-ns retrieve query & args]
+  (let [q (util/resolve-var db-ns 'q)]
+    (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
+      {:results (apply (partial q query) args)}
+      (let [qm           (if-not (map? query)
+                           (query-to-map query)
+                           query)
+            where        (normalize-all-eavs (:where qm))
+            in-vars      (zipmap (:in qm) args)
+            eavs         (get-eavs where)
+            vars         (vec (get-all-vars eavs))
+            newqm        (merge qm {:find vars :where where})
+            newq         (qm-to-query newqm)
+            r            (apply (partial q newqm) args)]
+        (merge
+         (when (some #{:datoms} retrieve)
+           {:datoms (create-q-datoms r eavs vars)})
+         (when (some #{:results} retrieve)
+           {:results
+            (d/q {:find (vec (:find qm))
+                  :in [[vars '...]]}
+                 (vec r))})
+         (when (some #{:patterns} retrieve)
+           (let
+               [eavs-ins     (clojure.walk/postwalk
+                              #(if-let [v (in-vars %)] v %) eavs)
+                qvar-count   (count-qvars eavs-ins)
+                linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
+                rvars        (zipmap
+                              vars
+                              (stack-vectors r))
+                prepped-eavs (clojure.walk/postwalk
+                              #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
+                              eavs-ins)]
+             {:patterns (patterns-from-eavs rvars prepped-eavs)})))))))

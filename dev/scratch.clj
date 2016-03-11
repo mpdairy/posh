@@ -68,6 +68,14 @@
                                               :todo/owner [*]}]
                   2)
 
+  (pd/pull-analyze 'd
+                   [:datoms :results :patterns]
+                   (:schema @conn)
+                   (d/db conn)
+                   '[:todo/name :todo/numbers {:category/_todo [:category/name]
+                                               :todo/owner [*]}]
+                   2)
+  
   (def pat
     (pd/pull-tx-pattern (d/db conn)
                         '[:todo/name :todo/numbers
@@ -169,7 +177,8 @@
                    [?task :task/name ?task-name]]
                  @conn true "Matt"))
 
-  (qd/q-analyze [:results :datoms :patterns]
+  (qd/q-analyze 'datascript.core
+                [:results :datoms :patterns]
                 '[:find ?task ?task-name ?list-name
                   :in $ ?true ?owner-name
                   :where
@@ -182,18 +191,6 @@
                   [?task :task/name ?task-name]]
                 @conn true "Matt")
 
-  (d/q '[:find ?a ?c
-         :in [[?a ?b ?c] ...]]
-       [[1 :hey "jim"]
-        [2 :go  "batty"]
-        [3 :fry "wormwood"]])
-
-  (d/q {:find '[?task ?task-name ?list-name]
-        :in '[[[?todo ?cat ?list-name ?task ?task-name ?p] ...]]}
-       [[2 5 "Matt's List" 9 "Compose opera" 1]
-        [2 3 "Matt's List" 6 "Clean Dishes" 1]
-        [2 3 "Matt's List" 7 "Mop Floors" 1]])
-  
   (def conn2 (d/create-conn schema))
   (d/transact! conn2 qd)
   )

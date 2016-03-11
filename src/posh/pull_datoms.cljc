@@ -1,5 +1,6 @@
 (ns posh.pull-datoms
-  (:require [datascript.core :as d]))
+  (:require [datascript.core :as d]
+            [posh.util :as util]))
 
 (defn reverse-lookup? [attr]
   (= (first (name attr)) '\_))
@@ -25,8 +26,8 @@
 
    :else pull-pattern))
 
-(defn pull-affected-datoms [db pull-pattern eid]
-  (d/pull db (insert-dbid pull-pattern) eid))
+(defn pull-affected-datoms [pull-fn db pull-pattern eid]
+  (pull-fn db (insert-dbid pull-pattern) eid))
 
 (defn pull-ref-one? [v]
   (and (map? v) (:db/id v)))
@@ -34,19 +35,19 @@
 (defn pull-ref-many? [v]
   (and (vector? v) (pull-ref-one? (first v))))
 
-(defn ref? [db attr]
-  (= (get (get (:schema db) attr) :db/valueType)
+(defn ref? [schema attr]
+  (= (get (get schema attr) :db/valueType)
      :db.type/ref))
 
-(defn cardinality-one? [db attr]
-  (when-let [e (get (:schema db) attr)]
+(defn cardinality-one? [schema attr]
+  (when-let [e (get schema attr)]
     (not (= (:db/cardinality e) :db.cardinality/many))))
 
-(defn cardinality-many? [db attr]
-  (when-let [e (get (:schema db) attr)]
+(defn cardinality-many? [schema attr]
+  (when-let [e (get schema attr)]
     (= (:db/cardinality e) :db.cardinality/many)))
 
-(defn tx-datoms-for-pull-map [db entity-id pull-map]
+(defn tx-datoms-for-pull-map [schema entity-id pull-map]
   (if (empty? pull-map)
     []
     (let [[k v] (first pull-map)
@@ -54,47 +55,48 @@
           k     (if r? (reverse-lookup k) k)]
       (cond
        (= k :db/id)
-       (tx-datoms-for-pull-map db entity-id (rest pull-map))
+       (tx-datoms-for-pull-map schema entity-id (rest pull-map))
 
-       (ref? db k)
+       (ref? schema k)
        (concat
         (cond
-         (and (not r?) (cardinality-one? db k))
+         (and (not r?) (cardinality-one? schema k))
          (concat
           [[entity-id k (:db/id v)]]
-          (tx-datoms-for-pull-map db (:db/id v) v))
+          (tx-datoms-for-pull-map schema (:db/id v) v))
 
-         (or r? (cardinality-many? db k))
+         (or r? (cardinality-many? schema k))
          (concat
           (when (not r?)
             (mapcat #(vector [entity-id k (:db/id %)]) v))
           (mapcat #(tx-datoms-for-pull-map
-                    db
+                    schema
                     (:db/id %)
                     (merge (when r? {k {:db/id entity-id}}) %))
                   v))
 
-         :else [[:db/add entity-id k v]])
-        (tx-datoms-for-pull-map db entity-id (rest pull-map)))
+         :else [[entity-id k v]])
+        (tx-datoms-for-pull-map schema entity-id (rest pull-map)))
 
        :else
        (concat
-        (if (cardinality-many? db k)
+        (if (cardinality-many? schema k)
           (mapcat #(vector [entity-id k %]) v)
           [[entity-id k v]])
-        (tx-datoms-for-pull-map db entity-id (rest pull-map)))))))
+        (tx-datoms-for-pull-map schema entity-id (rest pull-map)))))))
 
-(defn generate-affected-tx-datoms-for-pull [db affected-pull]
-  (tx-datoms-for-pull-map db (:db/id affected-pull) affected-pull))
+(defn generate-affected-tx-datoms-for-pull [schema affected-pull]
+  (tx-datoms-for-pull-map schema (:db/id affected-pull) affected-pull))
 
-(defn pull-datoms [db pull-pattern ent-id]
-  (generate-affected-tx-datoms-for-pull
-   db
-   (pull-affected-datoms db pull-pattern (d/entid db ent-id))))
+(comment (defn pull-datoms [db pull-pattern ent-id]
+           (generate-affected-tx-datoms-for-pull
+            db
+            (pull-affected-datoms db pull-pattern (d/entid db ent-id)))))
 
-;;;;; pull pattern generator
+;;;;; pull pattern generator ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment
+  ;; perhaps will use later to reduce the pull pattern verbosity
   (defn count-avs [patterns]
     (if (empty? patterns)
       {}
@@ -115,9 +117,7 @@
   (defn combine-patterns [patterns]
     (let [avs (reducible-patterns (count-avs patterns))
           eas (reducible-patterns (count-eas patterns))]
-      
-      )
-    ))
+      )))
 
 (defn limit-spec? [x]
   (and (seq? x) (= (first x) 'limit)))
@@ -132,9 +132,9 @@
 (defn recursive-val? [v]
   (or (number? v) (= v '...)))
 
-(defn tx-pattern-for-pull [db pull-pattern affected-pull]
+(defn tx-pattern-for-pull [schema pull-pattern affected-pull]
   (let [entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
-        val-keys    (remove #(or (reverse-lookup? %) (ref? db %)) entity-keys)
+        val-keys    (remove #(or (reverse-lookup? %) (ref? schema %)) entity-keys)
         ref-keys    (->> entity-keys
                          (remove (set val-keys))
                          (map (fn [k] {k [:db/id]})))
@@ -154,38 +154,42 @@
                     (cond
                      (recursive-val? ref-pull)
                      (when (ref-key affected-pull)
-                       (mapcat #(tx-pattern-for-pull db pull-pattern %)
+                       (mapcat #(tx-pattern-for-pull schema pull-pattern %)
                                (ref-key affected-pull)))
 
-                     (or r? (cardinality-many? db unrev-key))
-                     (mapcat #(tx-pattern-for-pull db ref-pull %)
+                     (or r? (cardinality-many? schema unrev-key))
+                     (mapcat #(tx-pattern-for-pull schema ref-pull %)
                              (ref-key affected-pull))
                      :else
-                     (tx-pattern-for-pull db ref-pull (ref-key affected-pull))))))
+                     (tx-pattern-for-pull schema ref-pull (ref-key affected-pull))))))
                pull-maps)))))
 
-(defn pull-tx-pattern [db pull-pattern ent-id]
-  (let [prepped-pattern (insert-dbid (remove-limits pull-pattern))]
-    (tx-pattern-for-pull
-     db
-     prepped-pattern
-     (pull-affected-datoms db pull-pattern (d/entid db ent-id)))))
-
-
 (comment
-  [[:db/id
-    :todo/name
-    :todo/numbers
-    {:category/_todo [:db/id :category/name], :todo/owner [*]}]
+  (defn pull-tx-pattern [db pull-pattern ent-id]
+    (let [prepped-pattern (insert-dbid (remove-limits pull-pattern))]
+      (tx-pattern-for-pull
+       db
+       prepped-pattern
+       (pull-affected-datoms db pull-pattern (d/entid db ent-id))))))
 
-   {:db/id 2,
-    :todo/name "Matt's List",
-    :todo/numbers [12 20 443],
-    :category/_todo
-    [{:db/id 3, :category/name "At Home"}
-     {:db/id 4, :category/name "Work Stuff"}
-     {:db/id 5, :category/name "Hobby"}],
-    :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}}]
 
-  )
+;;; combo them bad boys
+
+;; retrieve :datoms, :patterns, or :results
+(defn pull-analyze [db-ns retrieve schema db pull-pattern ent-id]
+  (when-not (empty? retrieve)
+    (let [pull            (util/resolve-var db-ns 'pull)
+          entid           (util/resolve-var db-ns 'entid)
+          affected-datoms (pull-affected-datoms pull db pull-pattern (entid db ent-id))]
+      (merge
+       (when (some #{:results} retrieve)
+         {:results affected-datoms})
+       (when (some #{:datoms} retrieve)
+         {:datoms (generate-affected-tx-datoms-for-pull schema affected-datoms)})
+       (when (some #{:patterns} retrieve)
+         {:patterns
+          (tx-pattern-for-pull
+           schema
+           (insert-dbid (remove-limits pull-pattern))
+           affected-datoms)})))))
 
