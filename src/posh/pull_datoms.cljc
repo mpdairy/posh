@@ -184,12 +184,20 @@
       (merge
        (when (some #{:results} retrieve)
          {:results affected-datoms})
-       (when (some #{:datoms} retrieve)
-         {:datoms (generate-affected-tx-datoms-for-pull schema affected-datoms)})
+       (when (some #{:datoms :datoms-t} retrieve)
+         (let [datoms (generate-affected-tx-datoms-for-pull schema affected-datoms)]
+           (merge
+            (when (some #{:datoms} retrieve)
+              {:datoms datoms})
+            (when (some #{:datoms-t} retrieve)
+              {:datoms-t (util/t-for-datoms db-ns db datoms)}))))
        (when (some #{:patterns} retrieve)
          {:patterns
           (tx-pattern-for-pull
            schema
            (insert-dbid (remove-limits pull-pattern))
            affected-datoms)})))))
+
+
+
 

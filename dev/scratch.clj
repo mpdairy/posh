@@ -2,6 +2,7 @@
   (:require [datascript.core :as d]
             [posh.q-datoms :as qd]
             [posh.pull-datoms :as pd]
+            [posh.util :as util]
             ))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
@@ -75,7 +76,8 @@
                    '[:todo/name :todo/numbers {:category/_todo [:category/name]
                                                :todo/owner [*]}]
                    2)
-  
+
+
   (def pat
     (pd/pull-tx-pattern (d/db conn)
                         '[:todo/name :todo/numbers

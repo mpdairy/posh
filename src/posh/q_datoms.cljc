@@ -204,7 +204,8 @@
 
 
 ;;;;;;;; q function that gives pattern, datoms, and results all in one
-;;;;;;;; query
+;;;;;;;; query. db should be first of args (for now. later, finding
+;;;;;;;; the t of each datom will be part of the q).
 
 
 (defn q-analyze [db-ns retrieve query & args]
@@ -222,8 +223,13 @@
             newq         (qm-to-query newqm)
             r            (apply (partial q newqm) args)]
         (merge
-         (when (some #{:datoms} retrieve)
-           {:datoms (create-q-datoms r eavs vars)})
+         (when (some #{:datoms :datoms-t} retrieve)
+           (let [datoms (create-q-datoms r eavs vars)]
+             (merge
+              (when (some #{:datoms} retrieve)
+                {:datoms datoms})
+              (when (some #{:datoms-t} retrieve)
+                {:datoms-t (util/t-for-datoms db-ns (first args) datoms)}))))
          (when (some #{:results} retrieve)
            {:results
             (d/q {:find (vec (:find qm))
