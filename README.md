@@ -347,326 +347,56 @@ This can be called with any entity and its text attrib, like
 
 ## Pattern Matching
 
-The datom pattern matcher is used to find if any pertinant datoms have
-been transacted in the database. If you stick to just using `q` and `pull`,
-you probably won't need to do any pattern matching, but you might want it for
-`after-tx!` and most certainly you'll want it if you use `db-tx`.
+Posh now generates exactly thorough pattern matching for `pull` and
+pretty efficient patterns for `q`, so you shouldn't need to specify your
+own unless you want to make things update less, like if you want
+certain components to just listen to a refresh signal.
 
-The pattern can either be a list of patterns or a tuple of a list of patterns and a query.
-
-To play around with the datom matcher:
-
-```clj
-(use 'posh.datom-match)
-
-;;;(datom-match? db patterns datom)
-
-> (datom-match? (d/db conn) '[[_ :age 34]] [123 :age 5])
-nil
-
-```
-Note, if the pattern match is true, it will return a map that contains
-any variables that might have been bound in the match, or just an
-empty map if there are no variables.
+The datom pattern matcher just takes a list of vectors that consist of
+values, sets, or a wildcard that match against tx-datoms. Tx-datoms
+are structured as: `[eid attr val tx added?]`. Typically
+you'll just want to match the `eid` and `attr`, and sometimes
+`val` if there is a ref.
 
 ```clj
-> (datom-match? (d/db conn) '[[?p [:name :age]]] [123 :name "jim"])
-{?p 123}
+(use 'posh.datom-matcher)
+
+;; (datom-match? patterns datom)
+
+(datom-match? '[[12 _ "hey"]] [12 :greeting "hey"])  ;; true
+
+(datom-match? '[[12 _ "what"]] [12 :greeting "hey"])  ;; false
+
+;; it just has to match one of the patterns
+(datom-match? '[[12 _ "what"]
+                [12 _ "hey"]]
+              [12 :greeting "hey"])  ;; true
+
+;; sets just see if the thing is in the set
+(datom-match? '[[12 _ #{"what" "hey"}]] [12 :greeting "hey"]) ;; true
+
+;; if it reaches the end of the pattern, it's a match:
+(datom-match? '[[4]] [4 :person/name "Jimmy Hogan"])  ;; true
+
+;; here's an example of a pattern generated for a pull that has some refs:
+'[[_ :category/todo 1]
+  [2 #{:category/name :category/slug} _]
+  [_ :task/category 2]
+  [3 #{:category/name :category/slug} _]
+  [_ :task/category 3]
+  [4 #{:category/name :category/slug} _]
+  [_ :task/category 4]]
+
 ```
+## Back-end
 
-### Datom Matching
+We are working on automating the back-end sync with
+datomic/datascript. Basically, the server will keep track of all the
+active queries for a client, do its own pattern matching on the tx-report, and send
+only the datoms that the client is looking for and does not already
+have. Should be nice.
 
-Here are examples of all the ways patterns can match. The
-examples use `db-tx`, though `pull-tx`, `q-tx`, `after-tx!`, and
-`before-tx!` use the same pattern matching.
-
-```clj
-
-  ;; The matcher takes a list of possible patterns
-  ;; each pattern is tried until one is true
-
-  ;; a pattern can be shorter than the tx report datom
-  ;; everything after the pattern ends is assumed to match
-
-  ;; matches every tx
-  (db-tx conn [[]])
-
-  ;; matches every tx with entity id of 435
-  (db-tx conn [[453]])
-
-
-  ;; matches to any title changes for this book's id
-  (defn book [id]
-    (let [db (db-tx conn [[id :book/title]])]
-      ...))
-
-  ;; underscore symbol is wildcard, but it must be quoted
-
-  '[[_ :person/name]] ;; or
-  [['_ :person/name]]
-
-  ;; tx datoms are [entity attribute value tx added?]
-  ;; this matches only those persons who just left a group
-  ;; since 'false' means it was retracted
-  (db-tx conn '[[_ :person/group _ _ false]])
-
-  ;; if you have external variables you'll have to unquote the form
-  ;; and quote each underscore
-  (let [color "red"]
-    (db-tx conn [['_ :car/color color]]))
-  
-  ;; multiple patterns. If it matches any one of them it updates
-  (db-tx conn '[[_ :person/name]
-                [_ :person/age]
-                [_ :person/group]])
-
-  ;; You can use predicate functions in the match.
-  ;; The function will get passed the datom's value as an arg
-  
-  ;; this will match any person older than 20
-  (db-tx conn '[[_ :person/age #(> % 20)]])
-
-  ;; but it's bad to use anonymous functions in the pattern like this
-  ;; because db-tx, pull-tx, and q-tx memoize and ClojureScript doesn't know that
-  ;; #(> % 20) equals #(> % 20) so it gobbles up memory
-
-  ;; So you either need to define your functions or, if you do use
-  ;; anonymous functions, at least put db-tx, pull-tx, or q-tx in the
-  ;; outer binding of  a form-2 component so it only loads onces.
-
-  ;; same thing, but nice for memoizing
-  (defn >20? [n] (> n 20))
-  (db-tx conn [['_ :person/age >20?]])
-
-  ;; match on any attrib change for a person,
-  ;; like :person/name, :person/age, but not :book/name
-  (defn person-attrib? [a] (= (namespace a) "person"))
-  (db-tx conn [['_ person-attrib?]])
-
-  ;; you can also group together possibilities in a vector.
-
-  ;; matches on the actions "drink" "burp" "sleep"
-  (db-tx conn [['_ :person/action ["drink" "burp" "sleep"]]])
-
-  ;; matches either of two people with id's 123 or 234, if either
-  ;; their name or age changes:
-  (db-tx conn [[[123 234] [:person/name :person/age]]])
-```
-
-### Query Matching
-
-Note: You shouldn't need query matching when using `pull`s and `q`s, but it
-is useful for `db-tx`, `after-tx!`, and `before-tx!`.
-
-In some cases you might want to do a little querying to get some extra
-information. For example, suppose we have a bookshelf component that
-prints out the names of all its books in alphabetical order. You'd want
-to listen for any changes to the bookshelf itself (like its own name)
-and you want to know when the title of any of the books changes so you
-can re-sort the shelf. Here's an example:
-
-```clj
-(defn bookshelf [bookshelf-id]
-  (let [db    (db-tx conn
-                     [[bookshelf-id]
-                      ['_ :book/bookshelf bookshelf-id]
-                      '[_ :book/name]])
-        b     (d/entity @db bookshelf-id)
-        books (map (partial d/entity @db)
-                   (d/q '[:find [?b ...]
-                          :in $ ?bs
-                          :where
-                          [?b :book/bookshelf ?bs]]
-                        @db bookshelf-id))]
-    [:ul "Books on bookshelf: " (:bookshelf/name b)
-     (for [b (sort-by :book/name books)]
-       ^{:key (:db/id b)} [:li (:book/name b)])]))
-```
-`[bookshelf-id]` watches for any changes to the
-bookshelf itself, like its name.
-
-`['_ :book/bookshelf bookshelf-id]`, watches for
-any books that get added to or retracted from the bookshelf.
-
-`'[_ :book/name]` watches for the change of any book names so it can
-re-sort the list. The problem with this is that it will match books
-that aren't even on its bookshelf. If we had a hundred
-bookshelves, changing the name of one book would cause them all the
-re-render--not good!
-
-To fix this, you can specify a query alongside your pattern matching.
-Just put the query in a map with the patterns as key.
-For example:
-
-```clj
-(db-tx conn {[[bookshelf-id]
-              ['_ :book/bookshelf bookshelf-id]
-              '[?b :book/name]]
-             [['?b :book/bookshelf bookshelf-id]]})
-```
-
-This grabs the `?b` from the last pattern (if the rest of the pattern `:book/name`
-matches first) and it runs the query to see if the book is part of
-the bookshelf. You can do anything you could normally do in a regular
-DataScript `q` query, even functions like:
-
-```clj
-(db-tx conn {'[[?p :person/action :drinking]]
-             '[[?p :person/age ?a]
-               [(< ?a 21)]]})             
-```
-which matches to any underaged drinkers.
-
-You can match as many variables as you'd like, but the query only gets
-run with the first matching pattern that returns vars.
-
-The pattern matcher is recursive, so you can pair queries with any
-datom pattern in the list.
-
-Suppose we have a `group` that sorts people either by name or by age.
-Let's say we are pretty thorough and only want to re-render the
-component when it's sorting by age and a person's age changes, or when it's
-sorting by name and a person's name changes, but not when a person's
-age changes and it's sorting by name, etc. You could do it this way:
-
-```clj
-(db-tx conn
-    [[group-id]
-     ['_ :person/group group-id]
-     {'[[?p :person/name _ _ true]]
-      [['?p :person/group group-id]
-       '[?p :person/group ?g]
-       '[?g :group/sort-by :person/name]]}
-     {'[[?p :person/age _ _ true]]
-      [['?p :person/group group-id]
-       '[?p :person/group ?g]
-       '[?g :group/sort-by :person/age]]}])
-```
-That's pretty verbose. Of course, you can generate the matching patterns and queries
-programatically.
-
-(You should notice here that `'[?p :person/group ?g]` follows
-`['?p :person/group group-id]` to bind `?g` to `group-id` so that it
-can unify with `'[?g :group/sort-by :person/name]`. You can't just do
-`[group-name :group/sort-by :person/name]` or it will always be true.)
-
-If you have nested queries, the parent queries get concatenated onto
-the children queries. Below is the same query as above:
-
-```clj
-(db-tx conn
-       [[group-id]
-        ['_ :person/group group-id]
-        {[{'[[?p :person/age _ _ true]]
-           '[[?g :group/sort-by :person/age]]}
-          {'[[?p :person/name _ _ true]]
-           '[[?g :group/sort-by :person/name]]}]
-         '[[?p :person/group ?g]]}])
-```
-`[[?p :person/group ?g]]` is a parent query so it gets appended to
-the children query. Let's say the datom is `[123 :person/name "Jim"]`.
-It won't match with `[group-id]` or with `['_ :person/group group-id]`
-so it will move onto the next pattern, which is a map, so it will grab
-the query `'[[?p :person/group ?g]]` and check the list of patterns,
-which are themselves query maps. It will fail to match
-`'[[?p :person/age _ _ true]]` so it will ignore the corresponding
-query. It will finally match `'[[?p :person/name _ _ true]]` and
-combine the parent and children queries and run `d/q`.
-
-Another thing you can do is use a function to return a variable
-or set of variables that can then be used to bind to a query. Just put
-them in a map.
-
-The solution below does the same thing as both above, except it will work
-with any tags you put into `person-sortables`.
-
-```clj
-(def person-sortables [:person/name :person/age :person/height :person/weight])
-
-(defn person-sortable [a]
-  (when (some #{a} person-sortables)
-    {'?sort-attr a}))
-
-(db-tx conn
-       [[group-id]
-        ['_ :person/group group-id]
-        {['?p person-sortable '_ '_ true]
-         [['?p :person/group group-id]
-          '[?p :person/group ?g]
-          '[?g :group/sort-by ?sort-attr]]}])
-```
-
-### Using `?variables` from the Datom Match
-
-This is not really recommended because it ruins the purity of the
-state.
-
-In `pull-tx` and `q-tx` you can set variables in the datom
-match and use the values for them in the query or pull.
-
-You should never do it though and I'll probably remove this feature so
-that nobody is tempted.
-
-#### pull-tx
-
-In the example below, `?p` and `?attr` are set in the datom match and
-are used to pull info about the person who has most recently changed
-an attribute.
-
-```clj
-(defn person-attr [a]
-  (when (= (namespace a) "person")
-    {'?attr a}))
-
-(defn last-person-changed []
-  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
-    (if-not @p
-      [:div "Waiting for someone to change something..."]
-      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
-                             :person/name)]
-        [:div (:person/name @p)
-         " just changed his/her " (name changed-attr)
-         " to " (changed-attr @p)]))))
-```
-
-The problem with this is that when you reload the app, nothing will
-appear until something is new is transacted. It would be better to query for
-the last changed person or to set up a `after-tx!` that updates some
-entry in the db that points to the last changed person.
-
-#### q-tx
-
-In the next example, the values of `?birthday-boy` and
-`?birthday-age` from the pattern match are used as args to the query.
-
-```clj
-(defn all-people-older-than-birthday-person []
-  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
-                    '[:find ?birthday-name ?name
-                      :in $ ?birthday-boy ?birthday-age
-                      :where
-                      [?p :person/age ?age]
-                      [(> ?age ?birthday-age)]
-                      [?p :person/name ?name]
-                      [?birthday-boy :person/name ?birthday-name]]
-                    '?birthday-boy
-                    '?birthday-age)]
-    (if (empty? @r)
-      [:div "Waiting for a birthday..."]
-      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
-       (for [n (map second @r)] ^{:key n} [:li n])])))
-```
-
-If you put any variable symbols in the `args` (symbols starting with a
-`?`), the query will return an empty set on its very first load and won't change
-until a datom is matched from the tx report.
-
-This also is just a lame trick and probably no use.
-
-## More later...
-
-I haven't looked at how to communicate with the back-end yet.
-Maybe there's some cool, easy way to do it.
+See our Gitter room for updates: https://gitter.im/metasoarous/posh
 
 ## License
 
