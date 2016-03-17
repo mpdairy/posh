@@ -91,7 +91,7 @@ Posh's `pull` operates just like Datomic / Datascript's `pull` except it takes a
 [Datomic's pull](http://docs.datomic.com/pull.html))
 
 Posh's `pull` only attempts to pull any new data if there has been a
-transaction of any datoms that might have changed the data it is
+transaction of any datoms that have changed the data it is
 looking at. For example:
 
 ```clj
