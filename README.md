@@ -350,7 +350,8 @@ This can be called with any entity and its text attrib, like
 Posh now generates exactly thorough pattern matching for `pull` and
 pretty efficient patterns for `q`, so you shouldn't need to specify your
 own unless you want to make things update less, like if you want
-certain components to just listen to a refresh signal.
+certain components to just listen to a refresh signal, or if you are
+using `after-tx` or `db-tx`.
 
 The datom pattern matcher just takes a list of vectors that consist of
 values, sets, or a wildcard that match against tx-datoms. Tx-datoms
