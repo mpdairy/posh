@@ -1,2 +1,0 @@
-(ns posh.p-datoms)
-

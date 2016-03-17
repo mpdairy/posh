@@ -1,4 +1,4 @@
-(ns posh.pull-datoms
+(ns posh.pull-analyze
   (:require [datascript.core :as d]
             [posh.util :as util]))
 
@@ -176,11 +176,9 @@
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
-(defn pull-analyze [db-ns retrieve schema db pull-pattern ent-id]
+(defn pull-analyze [pull-fn q-fn entid-fn retrieve schema db pull-pattern ent-id]
   (when-not (empty? retrieve)
-    (let [pull            (util/resolve-var db-ns 'pull)
-          entid           (util/resolve-var db-ns 'entid)
-          affected-datoms (pull-affected-datoms pull db pull-pattern (entid db ent-id))]
+    (let [affected-datoms (pull-affected-datoms pull-fn db pull-pattern (entid-fn db ent-id))]
       (merge
        (when (some #{:results} retrieve)
          {:results affected-datoms})
@@ -190,7 +188,7 @@
             (when (some #{:datoms} retrieve)
               {:datoms datoms})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms db-ns db datoms)}))))
+              {:datoms-t (util/t-for-datoms q-fn db datoms)}))))
        (when (some #{:patterns} retrieve)
          {:patterns
           (tx-pattern-for-pull
@@ -200,4 +198,8 @@
 
 
 
+(comment
 
+  (p/filter conn )
+
+  )

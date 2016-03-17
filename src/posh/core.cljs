@@ -4,9 +4,10 @@
             [reagent.core :as r]
             [datascript.core :as d]
             [posh.datom-match :refer [datom-match? any-datoms-match? query-symbol?]]
+            [posh.datom-matcher :as dm]
             [posh.pull-pattern-gen :as pull-gen]
             [posh.q-pattern-gen :as q-gen]
-
+            [posh.pull-analyze :as pa]
             [reagent.ratom :as ra]))
 
 (declare try-after-tx)
@@ -70,9 +71,8 @@
             (let [saved-db (atom (d/db conn))]
               (ra/make-reaction
                (fn []
-                 (if (any-datoms-match? (:db-before @last-tx-report)
-                                        patterns
-                                        (:tx-data @last-tx-report))
+                 (if (dm/any-datoms-match? patterns
+                                           (:tx-data @last-tx-report))
                    (reset! saved-db (:db-after @last-tx-report))
                    @saved-db))
                :on-dispose (fn [_ _]
@@ -105,38 +105,43 @@
             (deep-map #(or (vars %) %) pull-syntax))
           (or (vars entity) entity)))
 
-(defn pull-tx [conn patterns pull-pattern entity-id]
+(defn pull-tx [conn tx-patterns pull-pattern entity-id]
   (let [reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
         last-tx-report   (get-atom conn :last-tx-report)
-        storage-key      [:pull patterns pull-pattern entity-id]]
+        storage-key      [:pull tx-patterns pull-pattern entity-id]]
     (if-let [r (@reaction-buffers storage-key)]
       r
-      (let [genpatterns     (or patterns
-                                (pull-gen/pull-pattern-gen
-                                 pull-pattern
-                                 (d/entid @conn entity-id)))
-            query-key    [:pull genpatterns pull-pattern entity-id]
-            new-reaction
-            (let [saved-pull (atom (when (not (or (query-symbol? entity-id)
-                                                  (deep-find query-symbol? pull-pattern)))
-                                     (d/pull (d/db conn) pull-pattern entity-id)))]
+      (let [new-reaction
+            (let [{:keys [patterns results]}
+                  (pa/pull-analyze d/pull d/q d/entid
+                                   (concat [:results]
+                                           (when-not tx-patterns [:patterns]))
+                                   (:schema @conn)
+                                   @conn
+                                   pull-pattern
+                                   entity-id)
+                  saved-results  (atom results)
+                  saved-patterns (atom patterns)]
               (ra/make-reaction
                (fn []
-                 (if-let [vars (any-datoms-match?
-                                (:db-before @last-tx-report)
-                                genpatterns
-                                (:tx-data @last-tx-report))]
-                   (let [new-pull (build-pull (:db-after @last-tx-report)
-                                              pull-pattern entity-id vars)]
-                     (if (not= @saved-pull new-pull)
-                       (reset! saved-pull new-pull)
-                       @saved-pull))
-                   @saved-pull))
+                 (if (dm/any-datoms-match? (or tx-patterns @saved-patterns)
+                                           (:tx-data @last-tx-report))
+                   (let [{:keys [patterns results]}
+                         (pa/pull-analyze d/pull d/q d/entid
+                                          (concat [:results]
+                                                  (when-not tx-patterns [:patterns]))
+                                          (:schema @conn)
+                                          @conn
+                                          pull-pattern
+                                          entity-id)]
+                     (when-not tx-patterns (reset! saved-patterns patterns))
+                     (reset! saved-results results))
+                   @saved-results))
                :on-dispose (fn [_ _]
-                             (swap! active-queries disj query-key)
+                             (swap! active-queries disj storage-key)
                              (swap! reaction-buffers dissoc storage-key))))]
-        (swap! active-queries conj query-key)
+        (swap! active-queries conj storage-key)
         (swap! reaction-buffers merge {storage-key new-reaction})
         new-reaction))))
 

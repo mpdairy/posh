@@ -10,11 +10,11 @@
                  [datascript "0.13.3"]
                  ;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
                  ]
-  :plugins [[lein-cljsbuild "1.1.1"]]
+  :plugins [[lein-cljsbuild "1.1.3"]]
   :cljsbuild {
               :builds [ {:id "posh" 
                          :source-paths ["src/"]
-                         :figwheel true
+                         :figwheel false
                          :compiler {  :main "posh.core"
                                     :asset-path "js"
                                     :output-to "resources/public/js/main.js"
