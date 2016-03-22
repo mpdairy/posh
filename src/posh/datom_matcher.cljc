@@ -1,5 +1,4 @@
 (ns posh.datom-matcher)
- 
 
 (defn datom-match-pattern? [pattern datom]
   (if (empty? pattern)
@@ -26,7 +25,4 @@
   (any-datoms-match? '[[88 :deandog]
                        [#{123 88 32} :jimmy _]]
                      '[[28882 :major "billy"] [123 :jimmy "hey"]])
-
-  
-
   )

@@ -3,7 +3,6 @@
    [posh.util :as util]
    [datascript.core :as d]))
 
-
 ;;;;;;;;; Q-datoms  -- gets datoms for a query
 
 
@@ -117,20 +116,6 @@
                          eavs)
                     )) results)))
 
-(defn q-datoms [query & args]
-  (let [qm      (query-to-map query)
-        where   (normalize-all-eavs (:where qm))
-        in-vars (zipmap (:in qm) args)
-        eavs    (clojure.walk/postwalk
-                 #(if-let [v (in-vars %)] v %) (get-eavs where))
-        vars    (vec (get-all-vars eavs))
-        newqm   (merge qm {:find vars :where where})
-        newq    (qm-to-query newqm)
-        r       (apply (partial d/q newq) args)]
-    (map #(vec (cons :db/add %))
-         (create-q-datoms r eavs vars))))
-
-
 ;;; q pattern gen ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn count-qvars [xs]
@@ -181,33 +166,30 @@
 (defn patterns-from-eavs [vars patterns]
   (mapcat #(pattern-from-eav vars %) patterns))
 
-(defn q-pattern [query & args]
-  (let [qm           (query-to-map query)
-        where        (normalize-all-eavs (:where qm))
-        in-vars      (zipmap (:in qm) args)
-        eavs         (clojure.walk/postwalk
-                      #(if-let [v (in-vars %)] v %) (get-eavs where))
-        vars         (vec (get-all-vars eavs))
-        newqm        (merge qm {:find vars :where where})
-        newq         (qm-to-query newqm)
-        r            (apply (partial d/q newq) args)
-        
-        qvar-count   (count-qvars eavs)
-        linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
-        rvars        (zipmap
-                      vars
-                      (stack-vectors r))
-        prepped-eavs (clojure.walk/postwalk
-                      #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
-                      eavs)]
-    (patterns-from-eavs rvars prepped-eavs)))
+(defn just-qvars [ins args]
+  (if (empty? ins)
+    {}
+    (merge
+     (when-not (and (symbol? (first ins)) (= (first (str (first ins))) \$))
+       {(first ins) (first args)})
+     (just-qvars (rest ins) (rest args)))))
 
+
+(defn get-input-sets [ins args]
+  (let [varmap  (just-qvars ins args)
+        qvars   (vec (get-all-vars (keys varmap)))
+        varvals (apply
+                 (partial d/q {:find qvars
+                               :in (keys varmap)})
+                 (vals varmap))
+        varsets (reduce (partial merge-with conj) (zipmap qvars (repeat #{}))
+                        (map #(zipmap qvars %) varvals))]
+    varsets))
 
 ;;;;;;;; q function that gives pattern, datoms, and results all in one
 ;;;;;;;; query. db should be first of args (for now. later, finding
 ;;;;;;;; the t of each datom will be part of the q).
 
- 
 (defn q-analyze [q-fn retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
     {:results (apply (partial q-fn query) args)}
@@ -215,7 +197,6 @@
                          (query-to-map query)
                          query)
           where        (normalize-all-eavs (:where qm))
-          in-vars      (zipmap (:in qm) args)
           eavs         (get-eavs where)
           vars         (vec (get-all-vars eavs))
           newqm        (merge qm {:find vars :where where})
@@ -236,7 +217,8 @@
                (vec r))})
        (when (some #{:patterns} retrieve)
          (let
-             [eavs-ins     (clojure.walk/postwalk
+             [in-vars      (get-input-sets (:in qm) args)
+              eavs-ins     (clojure.walk/postwalk
                             #(if-let [v (in-vars %)] v %) eavs)
               qvar-count   (count-qvars eavs-ins)
               linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))

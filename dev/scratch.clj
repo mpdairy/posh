@@ -38,28 +38,35 @@
       {:db/id (tempid)
        :task/name "Clean Dishes"
        :task/done true
+       :permission/uuid "uktdkafojea"
        :task/category at-home}
       {:db/id (tempid)
        :task/name "Mop Floors"
        :task/done true
        :task/pinned true
+       :permission/uuid "sieojeiofja"
        :task/category at-home}
       {:db/id (tempid)
        :task/name "Draw a picture of a cat"
        :task/done false
+       :permission/uuid "sieojeiofja"
        :task/category hobby}
       {:db/id (tempid)
        :task/name "Compose opera"
        :task/done true
+       :permission/uuid "bmmsmsdlfds"
        :task/category hobby}
       {:db/id (tempid)
        :task/name "stock market library"
        :task/done false
+       :permission/uuid "uktdkafojea"
        :task/pinned true
        :task/category work-stuff}])))
 
 
 (populate! conn)
+
+
 
 (comment
 
@@ -72,8 +79,56 @@
                    2)
   )
 
+(def conn2 (d/create-conn))
+
+(d/transact! conn2 [{:db/id -1
+                     :permission/level 34
+                     :permission/uuid "uktdkafojea"}
+                    {:db/id -2
+                     :permission/level 54
+                     :permission/uuid "sieojeiofja"}
+                    {:db/id -3
+                     :permission/level 10
+                     :permission/uuid "bmmsmsdlfds"}])
 
 (comment
+
+  (d/q '[:find [?tname ...]
+         :in $task $perm ?level
+         :where
+         [$task ?t :task/name ?tname]
+         [$task ?t :permission/uuid ?uuid]
+         [$perm ?p :permission/uuid ?uuid]
+         [$perm ?p :permission/level ?level]]
+       @conn
+       @conn2
+       54)
+
+  (:rschema @conn)
+
+  )
+
+(comment
+
+  (qa/q-analyze d/q
+                [:results :datoms :patterns]
+                '[:find ?task ?task-name ?list-name
+                  :in $ ?true [?owner-name ...]
+                  :where
+                  [?p :person/name ?owner-name]
+                  [?todo :todo/owner ?p]
+                  [?todo :todo/name ?list-name]
+                  [?cat  :category/todo ?todo]
+                  [?task :task/category ?cat]
+                  [?task :task/done ?true]
+                  [?task :task/name ?task-name]]
+                @conn true ["Matt" "Jim"])
+
+
+  (d/q '[:find ?p ?d ?j
+         :in [[?p ?d] ...] ?j]
+       [[1 2] [3 4]]
+       :hey)
 
   (qa/q-analyze d/q
                 [:results :datoms :patterns]
