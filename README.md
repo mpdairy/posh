@@ -32,7 +32,7 @@ database changed an attribute of the `person-id` entity:
 ```
 ## Resources
 
-Posh chat room on Gitter: https://gitter.im/metasoarous/posh
+Posh chat room on Gitter: https://gitter.im/mpdairy/posh
 
 ### Examples:
 
@@ -397,7 +397,7 @@ active queries for a client, do its own pattern matching on the tx-report, and s
 only the datoms that the client is looking for and does not already
 have. Should be nice.
 
-See our Gitter room for updates: https://gitter.im/metasoarous/posh
+See our Gitter room for updates: https://gitter.im/mpdairy/posh
 
 ## License
 
