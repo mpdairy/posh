@@ -66,6 +66,18 @@
 
 (populate! conn)
 
+(def filly
+  (d/filter @conn (fn [_ datom]
+                    (println "filly " (first datom))
+                    (even? (first datom)))))
+
+(def bobo
+  (d/filter filly (fn [_ datom]
+                    (println "bobo " (first datom))
+                    (= (mod (first datom) 4) 0))))
+
+(d/pull bobo '[*] 4)
+
 
 
 (comment
@@ -77,6 +89,8 @@
                    '[:todo/name :todo/numbers {:category/_todo [:category/name]
                                                :todo/owner [*]}]
                    2)
+
+  (d/pull @conn '[{:todo/_owner ...}] 1)
   )
 
 (def conn2 (d/create-conn))
@@ -94,19 +108,40 @@
 (comment
 
   (d/q '[:find [?tname ...]
-         :in $task $perm ?level
+         :in $ $perm ?level
          :where
-         [$task ?t :task/name ?tname]
-         [$task ?t :permission/uuid ?uuid]
+         [?t :task/name ?tname]
+         [?t :permission/uuid ?uuid]
          [$perm ?p :permission/uuid ?uuid]
          [$perm ?p :permission/level ?level]]
        @conn
        @conn2
        54)
 
+  (d/q '[:find ?tname ?t ?uuid ?p ?level
+         :in $ $perm ?level
+         :where
+         [?t :task/name ?tname]
+         [?t :permission/uuid ?uuid]
+         [$perm ?p :permission/uuid ?uuid]
+         [$perm ?p :permission/level ?level]]
+       @conn
+       @conn2
+       54)
+  
+  '{:find  [?tname ?t ?uuid ?p ?level]
+    :in    [$ $perm ?level]
+    :where [[?t :task/name ?tname]
+            [?t :permission/uuid ?uuid]
+            [$perm ?p :permission/uuid ?uuid]
+            [$perm ?p :permission/level ?level]]}
+
   (:rschema @conn)
 
   )
+(def jim (atom {}))
+(swap! jim merge {:a 23})
+(swap! jim merge {:a 3 :b 8})
 
 (comment
 
@@ -146,6 +181,9 @@
 
   (def conn2 (d/create-conn schema))
   (d/transact! conn2 qd)
+
+  ;; filter db
+  
   )
 
 
