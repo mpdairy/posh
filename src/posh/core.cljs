@@ -50,12 +50,74 @@
   (d/transact! conn tx)
   [:span])
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; posh-db
+
+(defn posh-db [conn]
+  (let [reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)
+        query-key        [:posh-db]]
+    (if-let [r (@reaction-buffers query-key)]
+      {:conn conn
+       :reaction r}
+      (let [new-reaction
+            (ra/make-reaction
+             (fn []
+               {:tx (:tx-data @last-tx-report)
+                :db (or (:db-after @last-tx-report) @conn)}))]
+        (swap! reaction-buffers merge
+               {query-key new-reaction})
+        {:conn conn
+         :reaction new-reaction}))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; filter
+
+(defn filter-pull [poshdb pull-pattern entity-id]
+  (let [conn             (:conn poshdb)
+        reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)
+        storage-key      [:filter-pull pull-pattern entity-id]]
+    (if-let [r (@reaction-buffers storage-key)]
+      {:conn conn
+       :reaction r}
+      (let [new-reaction
+            (let [saved-patterns (atom nil)
+                  saved-tx       (atom [])
+                  saved-db       (atom nil)
+                  saved          (atom {})]
+              (ra/make-reaction
+               (fn []
+                 (let [{:keys [tx db]} @(:reaction poshdb)]
+                   (if (or (nil? @saved-patterns)
+                           (dm/any-datoms-match? @saved-patterns tx))
+                     (let [{:keys [patterns results datoms]}
+                           (pa/pull-analyze d/pull d/q d/entid
+                                            [:results :datoms :patterns]
+                                            (:schema @conn)
+                                            db
+                                            pull-pattern
+                                            entity-id)]
+                       (reset! saved-patterns patterns)
+                       (swap! saved merge
+                              {:tx (filter #(dm/datom-match? @saved-patterns %) tx)
+                               :db (d/filter db
+                                             (fn [_ datom]
+                                               (dm/datom-match? @saved-patterns datom)))}))
+                     @saved)))
+               :on-dispose (fn [_ _]
+                             (swap! active-queries disj storage-key)
+                             (swap! reaction-buffers dissoc storage-key))))]
+        (swap! active-queries conj storage-key)
+        (swap! reaction-buffers merge {storage-key new-reaction})
+        {:conn conn
+         :reaction new-reaction}))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; reactions
-
-;; all of these memoize based on the pattern, so don't use anonymous
-;; functions unless you are just going to call the reaction builder once
-
 
 ;; db-tx
 ;; returns :db-after of any new tx that matches pattern
@@ -154,7 +216,40 @@
   (apply (partial d/q q)
          (cons db (or args []))))
 
-;; in the future this will return some restricing tx patterns
+(comment (defn newq [query & args]
+           (let [reaction-buffers (get-atom conn :reaction-buffers)
+                 active-queries   (get-atom conn :active-queries)
+                 last-tx-report   (get-atom conn :last-tx-report)
+                 storage-key      [:q patterns query args]]
+             (if-let [r (@reaction-buffers storage-key)]
+               r
+               (let [genpatterns  (or patterns
+                                      (q-gen/q-pattern-gen query args))
+                     query-key    [:q genpatterns query args]
+                     new-reaction
+                     (let [saved-q    (atom (if (empty? (filter query-symbol? args))
+                                              (build-query (d/db conn) query args)
+                                              #{}))]
+                       (ra/make-reaction
+                        (fn []
+                          (if-let [vars (any-datoms-match?
+                                         (:db-before @last-tx-report)
+                                         genpatterns
+                                         (:tx-data @last-tx-report))]
+                            (let [new-q (build-query (:db-after @last-tx-report)
+                                                     query
+                                                     (map #(or (vars %) %) args))]
+                              (if (not= @saved-q new-q)
+                                (reset! saved-q new-q)
+                                @saved-q))
+                            @saved-q))
+                        :on-dispose (fn [_ _]
+                                      (swap! active-queries disj query-key)
+                                      (swap! reaction-buffers dissoc storage-key))))]
+                 (swap! active-queries conj query-key)
+                 (swap! reaction-buffers merge {storage-key new-reaction})
+                 new-reaction)))))
+
 
 (defn q-tx [conn patterns query & args]
   (let [reaction-buffers (get-atom conn :reaction-buffers)
