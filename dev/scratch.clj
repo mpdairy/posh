@@ -76,6 +76,8 @@
                     (println "bobo " (first datom))
                     (= (mod (first datom) 4) 0))))
 
+
+
 (d/pull bobo '[*] 4)
 
 
@@ -91,6 +93,32 @@
                    2)
 
   (d/pull @conn '[{:todo/_owner ...}] 1)
+
+  (d/pull-many @conn '[:todo/name :todo/numbers {:category/_todo [:category/name]
+                                                 :todo/owner [*]}]
+               [2])
+
+  (d/pull-many @conn '[:task/name] [7 10 6 9 8])
+
+  (let
+      [an
+       (pa/pull-many-analyze d/pull d/q d/entid
+                             [:patterns :datoms]
+                             (:schema @conn)
+                             (d/db conn)
+                             '[:task/name :task/done {:task/category [*]}]
+                             [7 10 6 9 8])]
+    (pa/combine-entids #{} [#{:task/name :task/done} '_] (:patterns an) [] [])
+    (pa/reduce-patterns (:patterns an)))
+
+  (d/q '[:find [?t ...]
+         :in $
+         :where
+         [?t :task/name _]]
+       @conn)
+
+  
+  
   )
 
 (def conn2 (d/create-conn))
@@ -118,6 +146,17 @@
        @conn2
        54)
 
+  (d/q '[:find ?tname (pull ?t [*]) ?uuid (pull ?p [*]) ?level
+         :in $ $perm ?level
+         :where
+         [?t :task/name ?tname]
+         [?t :permission/uuid ?uuid]
+         [$perm ?p :permission/uuid ?uuid]
+         [$perm ?p :permission/level ?level]]
+       @conn
+       @conn2
+       54)
+
   (d/q '[:find ?tname ?t ?uuid ?p ?level
          :in $ $perm ?level
          :where
@@ -128,7 +167,20 @@
        @conn
        @conn2
        54)
-  
+
+  (qa/q-analyze d/q
+                [:patterns :results :datoms-t]
+                '[:find ?tname ?t ?uuid ?p ?level
+                  :in $ $perm ?level
+                  :where
+                  [?t :task/name ?tname]
+                  [?t :permission/uuid ?uuid]
+                  [$perm ?p :permission/uuid ?uuid]
+                  [$perm ?p :permission/level ?level]]
+                {:conn conn :db @conn}
+                {:conn conn2 :db @conn2}
+                54)
+
   '{:find  [?tname ?t ?uuid ?p ?level]
     :in    [$ $perm ?level]
     :where [[?t :task/name ?tname]
@@ -136,15 +188,26 @@
             [$perm ?p :permission/uuid ?uuid]
             [$perm ?p :permission/level ?level]]}
 
+  (qa/get-eavs
+   (qa/normalize-all-eavs '[[?t :task/name ?tname]
+                            [?t :permission/uuid ?uuid]
+                            [$perm ?p :permission/uuid ?uuid]
+                            [$perm ?p :permission/level ?level]]))
+  
+
+  (qa/normalize-all-eavs '[[?t :task/name ?tname]
+                           [?t :permission/uuid ?uuid]
+                           [$perm ?p :permission/uuid ?uuid]
+                           [$perm ?p :permission/level ?level]])
+    
   (:rschema @conn)
 
   )
-(def jim (atom {}))
-(swap! jim merge {:a 23})
-(swap! jim merge {:a 3 :b 8})
+
 
 (comment
 
+  
   (qa/q-analyze d/q
                 [:results :datoms :patterns]
                 '[:find ?task ?task-name ?list-name

@@ -61,6 +61,7 @@
         query-key        [:posh-db]]
     (if-let [r (@reaction-buffers query-key)]
       {:conn conn
+       :filters []
        :reaction r}
       (let [new-reaction
             (ra/make-reaction
@@ -70,6 +71,7 @@
         (swap! reaction-buffers merge
                {query-key new-reaction})
         {:conn conn
+         :filters []
          :reaction new-reaction}))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -80,9 +82,11 @@
         reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
         last-tx-report   (get-atom conn :last-tx-report)
-        storage-key      [:filter-pull pull-pattern entity-id]]
+        filters          (concat (:filters poshdb) [[:pull pull-pattern entity-id]])
+        storage-key      [:filter-pull filters pull-pattern entity-id]]
     (if-let [r (@reaction-buffers storage-key)]
       {:conn conn
+       :filters filters
        :reaction r}
       (let [new-reaction
             (let [saved-patterns (atom nil)
@@ -114,6 +118,7 @@
         (swap! active-queries conj storage-key)
         (swap! reaction-buffers merge {storage-key new-reaction})
         {:conn conn
+         :filters filters
          :reaction new-reaction}))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

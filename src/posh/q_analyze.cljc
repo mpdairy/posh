@@ -27,6 +27,7 @@
 (defn query-to-map [query]
   (split-list-at keyword? query))
 
+(defn dbvar? [x] (and (symbol? x) (= (first (str x)) \$)))
 
 (defn qvar? [x] (and (symbol? x) (= (first (str x)) \?)))
 
@@ -61,7 +62,10 @@
                               (conj vars var))))))
 
 (defn normalize-eav [eav]
-  (vec (:eav (normalize-eav-helper eav 3 [] []))))
+  (let [dbeav (if (dbvar? (first eav))
+                eav
+                (cons (symbol "$") eav))]
+    (vec (cons (first dbeav) (:eav (normalize-eav-helper (rest dbeav) 3 [] []))))))
 
 (defn normalize-all-eavs [where]
   (cond
@@ -143,8 +147,7 @@
           (take (count (first vs)) (repeat #{})) vs))
 
 (defn pattern-from-eav [vars [e a v :as eav]]
-  (let [[qe qa qv] (map qvar? eav)]
-    [[e qe a qa v qv]]
+  (let [[qe qa qv] (map qvar? eav)] 
     (for [ee (if qe ['_ (get vars e)] [e])
           aa (if qa ['_ (get vars a)] [a])
           vv (if qv ['_ (get vars v)] [v])
@@ -163,8 +166,12 @@
                        (<= wildcard-count qvar-count)))]
       [ee aa vv])))
 
-(defn patterns-from-eavs [vars patterns]
-  (mapcat #(pattern-from-eav vars %) patterns))
+
+(defn patterns-from-eavs [dbvarmap vars patterns]
+  (->> (group-by first patterns)
+       (map (fn [[k v]]
+              {(k dbvarmap) (mapcat #(pattern-from-eav vars (rest %)) v)}))
+       (apply merge)))
 
 (defn just-qvars [ins args]
   (if (empty? ins)
@@ -186,13 +193,39 @@
                         (map #(zipmap qvars %) varvals))]
     varsets))
 
+;;;; handling db args: {:conn conn :db db}
+
+(defn db-arg? [arg]
+  (and
+   (map? arg)
+   (:db arg)
+   (:conn arg)))
+
+(defn convert-args-to [type args]
+  (map #(if (db-arg? %) (type %) %) args))
+
+(defn make-dbarg-map [ins args]
+  (if (empty? ins)
+    {}
+    (merge
+     (when (dbvar? (first ins))
+       {(first ins) (first args)})
+     (make-dbarg-map (rest ins) (rest args)))))
+
+(defn split-datoms [dbvarmap datoms]
+  (->> (group-by first datoms)
+       (map (fn [[db db-datoms]]
+              {(dbvarmap db)
+               (map (comp vec rest) db-datoms)}))
+       (apply merge)))
+
 ;;;;;;;; q function that gives pattern, datoms, and results all in one
 ;;;;;;;; query. db should be first of args (for now. later, finding
 ;;;;;;;; the t of each datom will be part of the q).
 
 (defn q-analyze [q-fn retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
-    {:results (apply (partial q-fn query) args)}
+    {:results (apply (partial q-fn query) (convert-args-to :db args))}
     (let [qm           (if-not (map? query)
                          (query-to-map query)
                          query)
@@ -201,15 +234,21 @@
           vars         (vec (get-all-vars eavs))
           newqm        (merge qm {:find vars :where where})
           newq         (qm-to-query newqm)
-          r            (apply (partial q-fn newqm) args)]
+          dbvarmap     (make-dbarg-map (:in qm) args)
+          r            (apply (partial q-fn newqm) (convert-args-to :db args))]
       (merge
        (when (some #{:datoms :datoms-t} retrieve)
-         (let [datoms (create-q-datoms r eavs vars)]
+         (let [datoms (split-datoms dbvarmap (create-q-datoms r eavs vars))]
            (merge
             (when (some #{:datoms} retrieve)
               {:datoms datoms})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms q-fn (first args) datoms)}))))
+              {:datoms-t
+               (->> datoms
+                    (map (fn [[db db-datoms]]
+                           {db
+                            (util/t-for-datoms q-fn (:db db) db-datoms)}))
+                    (apply merge))}))))
        (when (some #{:results} retrieve)
          {:results
           (d/q {:find (vec (:find qm))
@@ -228,4 +267,4 @@
               prepped-eavs (clojure.walk/postwalk
                             #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
                             eavs-ins)]
-           {:patterns (patterns-from-eavs rvars prepped-eavs)}))))))
+           {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
