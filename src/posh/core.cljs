@@ -1,4 +1,5 @@
 (ns posh.core
+  (:refer-clojure :exclude [filter])
   (:require-macros [reagent.ratom :refer [reaction]])
   (:require [goog.dom :as gdom]
             [reagent.core :as r]
@@ -77,6 +78,82 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; filter
 
+(defn filter [poshdb ea-list]
+  (let [conn             (:conn poshdb)
+        reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)
+        filters          (concat (:filters poshdb) [:hey]) ;;@ea-list
+        storage-key      [:filter filters]]
+    (if-let [r (@reaction-buffers storage-key)]
+      {:conn conn
+       :filters filters
+       :reaction r}
+      (let [new-reaction
+            (let [saved-patterns (atom nil)
+                  saved-tx       (atom [])
+                  saved-db       (atom nil)
+                  saved          (atom {})]
+              (ra/make-reaction
+               (fn []
+                 (let [{:keys [tx db]} @(:reaction poshdb)]
+                   (if (or (nil? @saved-patterns)
+                           (dm/any-datoms-match? @saved-patterns tx))
+                     (let [patterns (dm/reduce-patterns @ea-list)]
+                       (println "YOU DID IT SCUM FACE " patterns)
+                       (swap! saved merge
+                              {:filters (concat (:filters @(:reaction poshdb)) [patterns])
+                               :tx (clojure.core/filter #(dm/datom-match? @saved-patterns %) tx)
+                               :db (d/filter db
+                                             (fn [_ datom]
+                                               (dm/datom-match? @saved-patterns datom)))}))
+                     @saved)))
+               :on-dispose (fn [_ _]
+                             (swap! active-queries disj storage-key)
+                             (swap! reaction-buffers dissoc storage-key))))]
+        (swap! active-queries conj storage-key)
+        (swap! reaction-buffers merge {storage-key new-reaction})
+        {:conn conn
+         :filters filters
+         :reaction new-reaction}))))
+
+(defn filter-tx [poshdb tx-pattern]
+  (let [conn             (:conn poshdb)
+        reaction-buffers (get-atom conn :reaction-buffers)
+        active-queries   (get-atom conn :active-queries)
+        last-tx-report   (get-atom conn :last-tx-report)
+        filters          (concat (:filters poshdb) [:filter-tx tx-pattern])
+        storage-key      [:filter-tx filters]]
+    (if-let [r (@reaction-buffers storage-key)]
+      {:conn conn
+       :filters filters
+       :reaction r}
+      (let [new-reaction
+            (let [saved-patterns (atom nil)
+                  saved-tx       (atom [])
+                  saved-db       (atom nil)
+                  saved          (atom {})]
+              (ra/make-reaction
+               (fn []
+                 (let [{:keys [tx db]} @(:reaction poshdb)]
+                   (if (or (nil? @saved-patterns)
+                           (dm/any-datoms-match? @saved-patterns tx))
+                     (let [patterns (dm/reduce-patterns tx-pattern)]
+                       (swap! saved merge
+                              {:tx (clojure.core/filter #(dm/datom-match? @saved-patterns %) tx)
+                               :db (d/filter db
+                                             (fn [_ datom]
+                                               (dm/datom-match? @saved-patterns datom)))}))
+                     @saved)))
+               :on-dispose (fn [_ _]
+                             (swap! active-queries disj storage-key)
+                             (swap! reaction-buffers dissoc storage-key))))]
+        (swap! active-queries conj storage-key)
+        (swap! reaction-buffers merge {storage-key new-reaction})
+        {:conn conn
+         :filters filters
+         :reaction new-reaction}))))
+
 (defn filter-pull [poshdb pull-pattern entity-id]
   (let [conn             (:conn poshdb)
         reaction-buffers (get-atom conn :reaction-buffers)
@@ -107,7 +184,7 @@
                                             entity-id)]
                        (reset! saved-patterns patterns)
                        (swap! saved merge
-                              {:tx (filter #(dm/datom-match? @saved-patterns %) tx)
+                              {:tx (clojure.core/filter #(dm/datom-match? @saved-patterns %) tx)
                                :db (d/filter db
                                              (fn [_ datom]
                                                (dm/datom-match? @saved-patterns datom)))}))
@@ -267,7 +344,7 @@
                              (q-gen/q-pattern-gen query args))
             query-key    [:q genpatterns query args]
             new-reaction
-            (let [saved-q    (atom (if (empty? (filter query-symbol? args))
+            (let [saved-q    (atom (if (empty? (clojure.core/filter query-symbol? args))
                                      (build-query (d/db conn) query args)
                                      #{}))]
               (ra/make-reaction

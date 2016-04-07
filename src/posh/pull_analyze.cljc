@@ -1,6 +1,7 @@
 (ns posh.pull-analyze
   (:require [datascript.core :as d]
-            [posh.util :as util]))
+            [posh.util :as util]
+            [posh.datom-matcher :as dm]))
 
 (defn reverse-lookup? [attr]
   (= (first (name attr)) '\_))
@@ -165,35 +166,6 @@
                pull-maps)))))
 
 
-(defn combine-entids [entids rest-datom patterns new-patterns leftover-patterns]
-  (if (empty? patterns)
-    {:new-patterns (cons (vec (cons entids rest-datom)) new-patterns)
-     :leftover-patterns leftover-patterns}
-    (if (= rest-datom (rest (first patterns)))
-      (recur (clojure.set/union entids (if (set? (ffirst patterns))
-                                         (ffirst patterns)
-                                         (set [(ffirst patterns)])))
-                      rest-datom
-                      (rest patterns)
-                      new-patterns
-                      leftover-patterns)
-      (recur entids rest-datom (rest patterns) new-patterns
-                      (cons (first patterns) leftover-patterns)))))
-
-(defn reduce-patterns [patterns]
-  (loop [new-patterns []
-         leftover-patterns patterns]
-    (if (empty? leftover-patterns)
-      new-patterns
-      (if (let [id (ffirst leftover-patterns)]
-            (or (set? id) (number? id)))
-        (let [r (combine-entids #{} (rest (first leftover-patterns))
-                                leftover-patterns
-                                new-patterns
-                                [])]
-          (recur (:new-patterns r) (:leftover-patterns r)))
-        (recur (cons (first leftover-patterns) new-patterns) (rest leftover-patterns))))))
-
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
@@ -212,12 +184,11 @@
               {:datoms-t (util/t-for-datoms q-fn db datoms)}))))
        (when (some #{:patterns} retrieve)
          {:patterns
-          (reduce-patterns
+          (dm/reduce-patterns
            (tx-pattern-for-pull
             schema
             (insert-dbid (remove-limits pull-pattern))
             affected-datoms))})))))
-
 
 (defn pull-many-analyze [pull-fn q-fn entid-fn retrieve schema db pull-pattern ent-ids]
   (when-not (empty? retrieve)
@@ -247,7 +218,7 @@
             (cons
              (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
              (mapcat rest patterns))
-            (reduce-patterns (apply concat patterns))
+            (dm/reduce-patterns (apply concat patterns))
             )})))))
 
 (comment

@@ -3,7 +3,7 @@
             [posh.q-analyze :as qa]
             [posh.pull-analyze :as pa]
             [posh.util :as util]
-            [posh.datom-matcher :as dmatch]
+            [posh.datom-matcher :as dm]
             ))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
@@ -157,6 +157,15 @@
        @conn2
        54)
 
+  (qa/replace-find-pulls '[?tname [(pull ?t [*]) ...] ?uuid (pull ?p [*]) ?level])
+
+  (qa/get-pull-var-pairs '[?tname [(pull ?t [*]) ...] ?uuid (pull ?p [*]) ?level])
+
+  (qa/match-vars-to-dbs '[?t ?c] {'$ {:conn conn :db @conn :schema (:schema @conn)}}
+                        '[[$ ?t :task/name ?n]
+                          [$ ?t :task/category ?c]])
+
+
   (d/q '[:find ?tname ?t ?uuid ?p ?level
          :in $ $perm ?level
          :where
@@ -177,9 +186,34 @@
                   [?t :permission/uuid ?uuid]
                   [$perm ?p :permission/uuid ?uuid]
                   [$perm ?p :permission/level ?level]]
-                {:conn conn :db @conn}
-                {:conn conn2 :db @conn2}
+                {:conn conn :db @conn :schema (:schema @conn)}
+                {:conn conn2 :db @conn2 :schema (:schema @conn2)}
                 54)
+
+  (qa/q-analyze d/q
+                [:pulls]
+                '[:find ?tname ?t ?uuid ?p ?level
+                  :in $ $perm ?level
+                  :where
+                  [?t :task/name ?tname]
+                  [?t :permission/uuid ?uuid]
+                  [$perm ?p :permission/uuid ?uuid]
+                  [$perm ?p :permission/level ?level]]
+                {:conn conn :db @conn :schema (:schema @conn)}
+                {:conn conn2 :db @conn2 :schema (:schema @conn2)}
+                54)
+
+  (dm/reduce-patterns (map (fn [x] [x :person/name "zandy"]) (range 100)))
+
+  (d/q '[:find ?p
+         :in $ ?g
+         :where
+         [?p :task/category _]]
+       @conn 2)
+
+  (d/q '{:find [(min ?a) (max ?a) ?b]
+         :in [[[?a ?b] ...]]}
+       [[1 2] [3 4] [4 5]])
 
   '{:find  [?tname ?t ?uuid ?p ?level]
     :in    [$ $perm ?level]
@@ -193,13 +227,12 @@
                             [?t :permission/uuid ?uuid]
                             [$perm ?p :permission/uuid ?uuid]
                             [$perm ?p :permission/level ?level]]))
-  
 
   (qa/normalize-all-eavs '[[?t :task/name ?tname]
                            [?t :permission/uuid ?uuid]
                            [$perm ?p :permission/uuid ?uuid]
                            [$perm ?p :permission/level ?level]])
-    
+
   (:rschema @conn)
 
   )
@@ -207,6 +240,7 @@
 
 (comment
 
+  (qa/get-input-sets )
   
   (qa/q-analyze d/q
                 [:results :datoms :patterns]

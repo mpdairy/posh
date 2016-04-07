@@ -1,10 +1,11 @@
 (ns posh.q-analyze
   (:require
    [posh.util :as util]
-   [datascript.core :as d]))
+   [datascript.core :as d]
+   [posh.datom-matcher :as dm]
+   [posh.pull-analyze :as pa]))
 
 ;;;;;;;;; Q-datoms  -- gets datoms for a query
-
 
 (defn take-until [stop-at? ls]
   (if (or
@@ -193,6 +194,51 @@
                         (map #(zipmap qvars %) varvals))]
     varsets))
 
+;;;; handling pulls in queries
+
+;;; needs to also extract all the pulls
+
+(defn pull-pattern? [x]
+  (and (coll? x) (= (first x) 'pull) (= 3 (count x))))
+
+(defn replace-find-pulls [qfind]
+  "replaces pulls in query's :find with just their eid symbol"
+  (clojure.walk/postwalk (fn [x] (if (pull-pattern? x)
+                                  (second x)
+                                  x)) qfind))
+
+(defn get-pull-var-pairs [qfind]
+  "returns map of any vars and their pull commands in the :find"
+  (if (coll? qfind)
+    (cond
+     (empty? qfind) {}
+     (pull-pattern? qfind) {(second qfind) (nth qfind 2)}
+     :else (apply merge (map get-pull-var-pairs qfind)))
+   {}))
+
+(defn match-var-to-db [var dbvarmap dbeavs]
+  (if (empty? dbeavs)
+    nil
+    (let [[db e a v] (first dbeavs)]
+      (if (or (= var e) (and (= var v) (pa/ref? (:schema (dbvarmap db)) a)))
+        (dbvarmap db)
+        (recur var dbvarmap (rest dbeavs))))))
+
+(defn match-vars-to-dbs [vars dbvarmap dbeavs]
+  (if (empty? vars)
+    {}
+    (merge {(first vars) (match-var-to-db (first vars) dbvarmap dbeavs)}
+           (match-vars-to-dbs (rest vars) dbvarmap dbeavs))))
+
+(defn index-of [xs x]
+  (loop [n 0
+         xs xs]
+    (cond
+     (empty? xs) nil
+     (= (first xs) x) n
+     :else (recur (inc n) (rest xs)))))
+
+
 ;;;; handling db args: {:conn conn :db db}
 
 (defn db-arg? [arg]
@@ -223,20 +269,30 @@
 ;;;;;;;; query. db should be first of args (for now. later, finding
 ;;;;;;;; the t of each datom will be part of the q).
 
+;; instead of passing db's to q-analyze you pass
+;; {:conn conn :db db :schema schema}
+
 (defn q-analyze [q-fn retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
     {:results (apply (partial q-fn query) (convert-args-to :db args))}
-    (let [qm           (if-not (map? query)
-                         (query-to-map query)
-                         query)
-          where        (normalize-all-eavs (:where qm))
-          eavs         (get-eavs where)
-          vars         (vec (get-all-vars eavs))
-          newqm        (merge qm {:find vars :where where})
-          newq         (qm-to-query newqm)
-          dbvarmap     (make-dbarg-map (:in qm) args)
-          r            (apply (partial q-fn newqm) (convert-args-to :db args))]
+    (let [qm            (if-not (map? query)
+                          (query-to-map query)
+                          query)
+          where         (normalize-all-eavs (:where qm))
+          eavs          (get-eavs where)
+          vars          (vec (get-all-vars eavs))
+          newqm         (merge qm {:find vars :where where})
+          newq          (qm-to-query newqm)
+          dbvarmap      (make-dbarg-map (:in qm) args)
+          r             (apply (partial q-fn newqm) (convert-args-to :db args))
+          ;; handle pull queries:
+          pull-vars     (get-pull-var-pairs (:find qm))
+          pull-vars-dbs (match-vars-to-dbs (keys pull-vars) dbvarmap eavs)
+          no-pulls-find (replace-find-pulls (:find qm))
+          ]
       (merge
+       (when (some #{:pulls} retrieve)
+         {:pulls pull-vars-dbs})
        (when (some #{:datoms :datoms-t} retrieve)
          (let [datoms (split-datoms dbvarmap (create-q-datoms r eavs vars))]
            (merge
@@ -251,7 +307,7 @@
                     (apply merge))}))))
        (when (some #{:results} retrieve)
          {:results
-          (d/q {:find (vec (:find qm))
+          (d/q {:find (vec no-pulls-find)
                 :in [[vars '...]]}
                (vec r))})
        (when (some #{:patterns} retrieve)
