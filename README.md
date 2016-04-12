@@ -34,6 +34,8 @@ database changed an attribute of the `person-id` entity:
 
 Posh chat room on Gitter: https://gitter.im/mpdairy/posh
 
+I am also currently available for contract work.
+
 ### Examples:
 
 [Posh Todo List](https://github.com/mpdairy/posh-todo) - A todo list
