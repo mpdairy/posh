@@ -13,6 +13,13 @@
 
 (declare try-after-tx)
 
+(def dcfg
+  {:db d/db
+   :pull d/pull
+   :q d/q
+   :filter d/filter
+   :entid d/entid})
+
 (defn posh! [conn]
   (let [posh-vars
         {:last-tx-report (r/atom [])
@@ -78,13 +85,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; filter
 
+;; 
+
 (defn filter [poshdb ea-list]
   (let [conn             (:conn poshdb)
         reaction-buffers (get-atom conn :reaction-buffers)
         active-queries   (get-atom conn :active-queries)
         last-tx-report   (get-atom conn :last-tx-report)
-        filters          (concat (:filters poshdb) [:hey]) ;;@ea-list
-        storage-key      [:filter filters]]
+        filters          (concat (:filters poshdb) ea-list) ;;@ea-list
+        storage-key      [:filter filters]
+        saved-filter     (atom "Hey guys this is Jenkins")]
     (if-let [r (@reaction-buffers storage-key)]
       {:conn conn
        :filters filters
@@ -101,6 +111,8 @@
                            (dm/any-datoms-match? @saved-patterns tx))
                      (let [patterns (dm/reduce-patterns @ea-list)]
                        (println "YOU DID IT SCUM FACE " patterns)
+                       (comment (reset! saved-filter
+                                        (concat (:filters @(:reaction poshdb)) [patterns])))
                        (swap! saved merge
                               {:filters (concat (:filters @(:reaction poshdb)) [patterns])
                                :tx (clojure.core/filter #(dm/datom-match? @saved-patterns %) tx)
@@ -114,7 +126,7 @@
         (swap! active-queries conj storage-key)
         (swap! reaction-buffers merge {storage-key new-reaction})
         {:conn conn
-         :filters filters
+         :filters "Hey this is Jim"
          :reaction new-reaction}))))
 
 (defn filter-tx [poshdb tx-pattern]
@@ -176,7 +188,7 @@
                    (if (or (nil? @saved-patterns)
                            (dm/any-datoms-match? @saved-patterns tx))
                      (let [{:keys [patterns results datoms]}
-                           (pa/pull-analyze d/pull d/q d/entid
+                           (pa/pull-analyze dcfg
                                             [:results :datoms :patterns]
                                             (:schema @conn)
                                             db
@@ -258,7 +270,7 @@
       r
       (let [new-reaction
             (let [{:keys [patterns results]}
-                  (pa/pull-analyze d/pull d/q d/entid
+                  (pa/pull-analyze dcfg
                                    (concat [:results]
                                            (when-not tx-patterns [:patterns]))
                                    (:schema @conn)
@@ -272,7 +284,7 @@
                  (if (dm/any-datoms-match? (or tx-patterns @saved-patterns)
                                            (:tx-data @last-tx-report))
                    (let [{:keys [patterns results]}
-                         (pa/pull-analyze d/pull d/q d/entid
+                         (pa/pull-analyze dcfg
                                           (concat [:results]
                                                   (when-not tx-patterns [:patterns]))
                                           (:schema @conn)

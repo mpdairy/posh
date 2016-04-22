@@ -169,9 +169,10 @@
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
-(defn pull-analyze [pull-fn q-fn entid-fn retrieve schema db pull-pattern ent-id]
+(defn pull-analyze [dcfg retrieve schema db pull-pattern ent-id]
   (when-not (empty? retrieve)
-    (let [affected-datoms (pull-affected-datoms pull-fn db pull-pattern (entid-fn db ent-id))]
+    (let [affected-datoms
+          (pull-affected-datoms (:pull dcfg) db pull-pattern ((:entid dcfg) db ent-id))]
       (merge
        (when (some #{:results} retrieve)
          {:results affected-datoms})
@@ -181,7 +182,7 @@
             (when (some #{:datoms} retrieve)
               {:datoms datoms})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms q-fn db datoms)}))))
+              {:datoms-t (util/t-for-datoms (:q dcfg) db datoms)}))))
        (when (some #{:patterns} retrieve)
          {:patterns
           (dm/reduce-patterns
@@ -189,12 +190,12 @@
             schema
             (insert-dbid (remove-limits pull-pattern))
             affected-datoms))})))))
-
-(defn pull-many-analyze [pull-fn q-fn entid-fn retrieve schema db pull-pattern ent-ids]
+ 
+(defn pull-many-analyze [dcfg retrieve schema db pull-pattern ent-ids]
   (when-not (empty? retrieve)
-    (let [resolved-ent-ids (map #(entid-fn db %) ent-ids)
+    (let [resolved-ent-ids (map #((:entid dcfg) db %) ent-ids)
           affected-datoms
-          (map (fn [ent-id] (pull-affected-datoms pull-fn db pull-pattern ent-id))
+          (map (fn [ent-id] (pull-affected-datoms (:pull dcfg) db pull-pattern ent-id))
                resolved-ent-ids)]
       (merge
        (when (some #{:results} retrieve)
@@ -206,7 +207,7 @@
             (when (some #{:datoms} retrieve)
               {:datoms datoms})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms q-fn db datoms)}))))
+              {:datoms-t (util/t-for-datoms (:q dcfg) db datoms)}))))
        (when (some #{:patterns} retrieve)
          {:patterns
           (let [patterns
@@ -221,8 +222,3 @@
             (dm/reduce-patterns (apply concat patterns))
             )})))))
 
-(comment
-
-  (p/filter conn )
-
-  )

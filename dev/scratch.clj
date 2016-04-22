@@ -4,6 +4,7 @@
             [posh.pull-analyze :as pa]
             [posh.util :as util]
             [posh.datom-matcher :as dm]
+            [posh.posh-tree :as pt]
             ))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
@@ -283,6 +284,67 @@
   
   )
 
+
+
+
+;;; posh tree testing :::
+
+(def dcfg
+  {:db d/db
+   :pull d/pull
+   :q d/q
+   :filter d/filter
+   :entid d/entid})
+
+(def cache
+  {[:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]]
+   {:filter-pred (fn [_ datom]
+                   (dm/datom-match? '[[_ #{:task/name :person/name :category/name}]]
+                                    datom))}})
+
+(def poshdb2
+  [:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]])
+
+(def poshdb1 [:db conn])
+
+(def tree1
+  {[:db] {[:pull [:db conn] '[*] 3] :query
+          [:pull [:db conn] '[:task/name] 10] :query
+
+          [:filter-tx '[[_ #{:task/name :person/name :category/name}]]]
+          {[:pull [:filter-tx '[[_ :task/name]]] '[*] 12] :query}}})
+
+
+(def poshtree
+  {:tree tree1
+   :cache cache
+   :dcfg dcfg
+   :conn conn
+   :schema (:schema @conn)})
+
+
+(comment
+
+  [{:keys [tree cache dcfg schema conn] :as posh-tree} retrieve poshdb pull-pattern eid]
+  (:cache (pt/pull poshtree [:results :datoms-t] poshdb2 '[*] 4))
+
+  (def pt11
+    (pt/add-filter-tx pt1 [:db] '[[_ #{:task/name :person/name :category/name}]]))
+
+  (pt/add-filter-tx pt2 [:filter-tx [:db] '[[_ #{:task/name :person/name :category/name}]]]
+                    '[[#{1, 2, 3}]])
+
+  (pt/get-conn
+   [:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]])
+
+  (count
+   (pt/poshdb->db dcfg cache poshdb1))
+
+  (count
+   (pt/poshdb->db dcfg cache poshdb2))
+
+
+  )
 
 
 
