@@ -178,8 +178,8 @@
        @conn2
        54)
 
-  (qa/q-analyze d/q
-                [:patterns :results :datoms-t]
+  (qa/q-analyze {:q d/q}
+                [:results :datoms :patterns]
                 '[:find ?tname ?t ?uuid ?p ?level
                   :in $ $perm ?level
                   :where
@@ -187,13 +187,17 @@
                   [?t :permission/uuid ?uuid]
                   [$perm ?p :permission/uuid ?uuid]
                   [$perm ?p :permission/level ?level]]
-                {:conn conn :db @conn :schema (:schema @conn)}
-                {:conn conn2 :db @conn2 :schema (:schema @conn2)}
+                {:conn conn :db @conn
+                 :schema (:schema @conn)
+                 :key [:db :conn]}
+                {:conn conn2 :db @conn2
+                 :schema (:schema @conn2)
+                 :key [:db :conn2]}
                 54)
 
-  (qa/q-analyze d/q
+  (qa/q-analyze-with-pulls {:q d/q}
                 [:pulls]
-                '[:find ?tname ?t ?uuid ?p ?level
+                '[:find (pull ?tname '[*]) ?t ?uuid ?p ?level
                   :in $ $perm ?level
                   :where
                   [?t :task/name ?tname]
@@ -333,12 +337,24 @@
 
   (-> emptytree
       (pt/add-conn conn (:schema @conn) :hux)
+      (pt/add-conn conn2 (:schema @conn2) :perm)
       (pt/add-db conn)
       (pt/add-pull [:patterns :datoms] [:db :hux] '[*] 3)
       (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
       (pt/add-pull [:patterns :datoms]
                    '[:filter-tx [:db :hux] [[_ #{:category/name}]]]
                    '[*] 3)
+      (pt/add-q [:results :datoms :patterns]
+                '[:find ?tname ?t ?uuid ?p ?level
+                  :in $ $perm ?level
+                  :where
+                  [?t :task/name ?tname]
+                  [?t :permission/uuid ?uuid]
+                  [$perm ?p :permission/uuid ?uuid]
+                  [$perm ?p :permission/level ?level]]
+                [:db :hux]
+                [:db :perm]
+                54)
       :cache)
 
 

@@ -128,25 +128,39 @@
 (comment)
 
 (defn add-q [{:keys [tree cache dcfg conns conns-by-id] :as posh-tree} retrieve query & args]
-  (let [storage-key [:pull poshdb pull-pattern eid]
-        cached      (get cache storage-key)
-        cached-pull (or cached
-                        (let [conn-id     (poshdb->conn-id poshdb)
-                              conn        (id->conn posh-tree conn-id)
-                              conn-attrs  (get-conn-attrs posh-tree conn)
-                              retrieve    (if (some #{:patterns} retrieve) retrieve
-                                              (cons :patterns retrieve))]
-                          (pa/pull-analyze dcfg retrieve (:schema conn-attrs)
-                                           (poshdb->db posh-tree poshdb)
-                                           pull-pattern
-                                           eid)))]
-    (if cached
-      posh-tree
-      (merge
-       posh-tree
-       {:tree (add-item tree poshdb storage-key :query)
-        :cache (assoc cache storage-key cached-pull)}))))
-
+  (let [storage-key [:q query args]
+        cached      (get cache storage-key)]
+    (or cached
+        (let [retrieve   (if (some #{:patterns} retrieve) retrieve
+                             (cons :patterns retrieve))
+              qm         (qa/query-to-map query)
+              dbvarmap   (qa/make-dbarg-map (:in qm) args)
+              poshdbs    (vals dbvarmap)
+              poshdbmap  (->> dbvarmap
+                              (map (fn [[db-sym poshdb]]
+                                     (let [db    (poshdb->db posh-tree poshdb)
+                                           attrs (poshdb->attrs posh-tree poshdb)]
+                                       {db-sym
+                                        {:conn (:conn attrs)
+                                         :db db
+                                         :key poshdb
+                                         :schema (:schema attrs)}})))
+                              (apply merge))
+              fixed-args (->> (zipmap (:in qm) args)
+                              (map (fn [[sym arg]]
+                                     (or (get poshdbmap sym) arg))))
+              analysis   (apply
+                          (partial qa/q-analyze dcfg retrieve query)
+                          fixed-args)]
+          (merge
+           posh-tree
+           {:tree (loop [tree tree
+                         poshdbs (vals dbvarmap)]
+                    (if (empty? poshdbs)
+                      tree
+                      (recur (add-item tree (first poshdbs) storage-key :query)
+                             (rest poshdbs))))
+            :cache (assoc cache storage-key analysis)})))))
 
 ;; calculating the tree
 (defn tree-calc-tx [posh-tree cache tx tx-t]

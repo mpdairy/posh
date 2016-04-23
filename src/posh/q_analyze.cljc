@@ -26,7 +26,9 @@
            (split-list-at split-at? (rest-at split-at? (rest ls))))))
 
 (defn query-to-map [query]
-  (split-list-at keyword? query))
+  (if-not (map? query)
+    (split-list-at keyword? query)
+    query))
 
 (defn dbvar? [x] (and (symbol? x) (= (first (str x)) \$)))
 
@@ -171,7 +173,7 @@
 (defn patterns-from-eavs [dbvarmap vars patterns]
   (->> (group-by first patterns)
        (map (fn [[k v]]
-              {(k dbvarmap) (mapcat #(pattern-from-eav vars (rest %)) v)}))
+              {(:key (dbvarmap k)) (mapcat #(pattern-from-eav vars (rest %)) v)}))
        (apply merge)))
 
 (defn just-qvars [ins args]
@@ -265,14 +267,23 @@
                (map (comp vec rest) db-datoms)}))
        (apply merge)))
 
+(defn split-datoms [datoms]
+  (->> (group-by first datoms)
+       (map (fn [[db-sym db-datoms]]
+              {db-sym
+               (map (comp vec rest) db-datoms)}))
+       (apply merge)))
+
 ;;;;;;;; q function that gives pattern, datoms, and results all in one
 ;;;;;;;; query. db should be first of args (for now. later, finding
 ;;;;;;;; the t of each datom will be part of the q).
 
 ;; instead of passing db's to q-analyze you pass
-;; {:conn conn :db db :schema schema}
+;; {:conn conn :db db :schema schema :key key}
 
-(defn q-analyze [dcfg retrieve query & args]
+;; it will return the requested info, sorted by key.
+
+(defn q-analyze-with-pulls [dcfg retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
     {:results (apply (partial (:q dcfg) query) (convert-args-to :db args))}
     (let [qm            (if-not (map? query)
@@ -307,6 +318,57 @@
        (when (some #{:results} retrieve)
          {:results
           (d/q {:find (vec no-pulls-find)
+                :in [[vars '...]]}
+               (vec r))})
+       (when (some #{:patterns} retrieve)
+         (let
+             [in-vars      (get-input-sets (:in qm) args)
+              eavs-ins     (clojure.walk/postwalk
+                            #(if-let [v (in-vars %)] v %) eavs)
+              qvar-count   (count-qvars eavs-ins)
+              linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
+              rvars        (zipmap
+                            vars
+                            (stack-vectors r))
+              prepped-eavs (clojure.walk/postwalk
+                            #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
+                            eavs-ins)]
+           {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
+
+
+(defn q-analyze [dcfg retrieve query & args]
+  (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
+    {:results (apply (partial (:q dcfg) query) (convert-args-to :db args))}
+    (let [qm           (query-to-map query)
+          where        (normalize-all-eavs (:where qm))
+          eavs         (get-eavs where)
+          vars         (vec (get-all-vars eavs))
+          newqm        (merge qm {:find vars :where where})
+          newq         (qm-to-query newqm)
+          dbvarmap     (make-dbarg-map (:in qm) args)
+          r            (apply (partial (:q dcfg) newqm) (convert-args-to :db args))]
+      (merge
+       (when (some #{:datoms :datoms-t} retrieve)
+         (let [datoms (split-datoms(create-q-datoms r eavs vars))]
+           (merge
+            (when (some #{:datoms} retrieve)
+              {:datoms
+               (->> datoms
+                    (map (fn [[db-sym db-datoms]]
+                           {(:key (dbvarmap db-sym))
+                            db-datoms}))
+                    (apply merge))})
+            (when (some #{:datoms-t} retrieve)
+              {:datoms-t
+               (->> datoms
+                    (map (fn [[db-sym db-datoms]]
+                           (let [db (dbvarmap db-sym)]
+                             {(:key db)
+                              (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
+                    (apply merge))}))))
+       (when (some #{:results} retrieve)
+         {:results
+          (d/q {:find (vec (:find qm))
                 :in [[vars '...]]}
                (vec r))})
        (when (some #{:patterns} retrieve)
