@@ -272,9 +272,9 @@
 ;; instead of passing db's to q-analyze you pass
 ;; {:conn conn :db db :schema schema}
 
-(defn q-analyze [q-fn retrieve query & args]
+(defn q-analyze [dcfg retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
-    {:results (apply (partial q-fn query) (convert-args-to :db args))}
+    {:results (apply (partial (:q dcfg) query) (convert-args-to :db args))}
     (let [qm            (if-not (map? query)
                           (query-to-map query)
                           query)
@@ -284,12 +284,11 @@
           newqm         (merge qm {:find vars :where where})
           newq          (qm-to-query newqm)
           dbvarmap      (make-dbarg-map (:in qm) args)
-          r             (apply (partial q-fn newqm) (convert-args-to :db args))
+          r             (apply (partial (:q dcfg) newqm) (convert-args-to :db args))
           ;; handle pull queries:
           pull-vars     (get-pull-var-pairs (:find qm))
           pull-vars-dbs (match-vars-to-dbs (keys pull-vars) dbvarmap eavs)
-          no-pulls-find (replace-find-pulls (:find qm))
-          ]
+          no-pulls-find (replace-find-pulls (:find qm))]
       (merge
        (when (some #{:pulls} retrieve)
          {:pulls pull-vars-dbs})
@@ -303,7 +302,7 @@
                (->> datoms
                     (map (fn [[db db-datoms]]
                            {db
-                            (util/t-for-datoms q-fn (:db db) db-datoms)}))
+                            (util/t-for-datoms (:q dcfg) (:db db) db-datoms)}))
                     (apply merge))}))))
        (when (some #{:results} retrieve)
          {:results

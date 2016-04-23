@@ -1,5 +1,11 @@
 (ns posh.util)
 
+(defn exception [msg]
+  #?(:clj
+     (throw (Exception. msg))
+     :cljs
+     (throw (js/Error. msg))))
+
 ;;;; db stuff
 
 (defn t-for-datoms [q-fn db datoms]

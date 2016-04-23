@@ -322,11 +322,28 @@
    :conn conn
    :schema (:schema @conn)})
 
+(def emptytree
+  {:tree {}
+   :cache {}
+   :dcfg dcfg
+   :conns {}
+   :conns-by-id {}})
 
 (comment
 
+  (-> emptytree
+      (pt/add-conn conn (:schema @conn) :hux)
+      (pt/add-db conn)
+      (pt/add-pull [:patterns :datoms] [:db :hux] '[*] 3)
+      (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
+      (pt/add-pull [:patterns :datoms]
+                   '[:filter-tx [:db :hux] [[_ #{:category/name}]]]
+                   '[*] 3)
+      :cache)
+
+
   [{:keys [tree cache dcfg schema conn] :as posh-tree} retrieve poshdb pull-pattern eid]
-  (:cache (pt/pull poshtree [:results :datoms-t] poshdb2 '[*] 4))
+  (:cache (pt/add-pull poshtree [:results :datoms-t] poshdb2 '[*] 4))
 
   (def pt11
     (pt/add-filter-tx pt1 [:db] '[[_ #{:task/name :person/name :category/name}]]))
