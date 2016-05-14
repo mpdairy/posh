@@ -29,7 +29,7 @@
   (if-not (map? query)
     (split-list-at keyword? query)
     query))
-
+ 
 (defn dbvar? [x] (and (symbol? x) (= (first (str x)) \$)))
 
 (defn qvar? [x] (and (symbol? x) (= (first (str x)) \?)))
