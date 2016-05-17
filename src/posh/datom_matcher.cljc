@@ -16,6 +16,10 @@
 (defn any-datoms-match? [patterns datoms]
   (some #(datom-match? patterns %) datoms))
 
+
+(defn matching-datoms [patterns datoms]
+  (filter #(datom-match? patterns %) datoms))
+
 (defn combine-entids [entids rest-datom patterns new-patterns leftover-patterns]
   (if (empty? patterns)
     {:new-patterns (cons (vec (cons entids rest-datom)) new-patterns)
@@ -54,4 +58,6 @@
   (any-datoms-match? '[[88 :deandog]
                        [#{123 88 32} :jimmy _]]
                      '[[28882 :major "billy"] [123 :jimmy "hey"]])
+
+  
   )

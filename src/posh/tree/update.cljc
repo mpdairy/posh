@@ -6,21 +6,22 @@
             [posh.q-analyze :as qa]
             [posh.tree.db :as db]))
 
-(defn update-pull [{:keys [dcfg] :as posh-tree} retrieve storage-key]
-  (let [[_ poshdb pull-pattern eid] storage-key]
+(defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
+  (let [[_ poshdb pull-pattern eid] storage-key
+        conn-id                     (db/poshdb->conn-id poshdb)]
     (pa/pull-analyze dcfg
                      (cons :patterns retrieve)
-                     (:schema (db/poshdb->attrs posh-tree poshdb))
+                     (get (:schemas posh-tree) conn-id)
                      (db/poshdb->db posh-tree poshdb)
                      pull-pattern
                      eid)))
 
-(defn update-filter-pull [posh-tree retrieve storage-key]
+(defn update-filter-pull [posh-tree storage-key]
   (println "big money, open hand.")
-  (let [analysis (update-pull posh-tree retrieve storage-key)]
+  (let [analysis (update-pull posh-tree storage-key)]
     (assoc analysis :filter-patterns (:patterns analysis))))
 
-(defn update-q [{:keys [dcfg] :as posh-tree} retrieve storage-key]
+(defn update-q [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   "Returns {:dbvarmap .. :analysis ..}"
   (let [[_ query args] storage-key
         retrieve       (cons :patterns retrieve)
@@ -46,9 +47,8 @@
       (partial qa/q-analyze dcfg retrieve query)
       fixed-args)}))
 
-(defn update-posh-item [posh-tree retrieve storage-key]
-  (merge {:upda______________________________________________ted :YES!!!!!!}
-         (case (first storage-key)
-           :pull (update-pull posh-tree retrieve storage-key)
-           :q    (:analysis (update-q posh-tree retrieve storage-key))
-           :filter-pull (update-filter-pull posh-tree retrieve storage-key))))
+(defn update-posh-item [posh-tree storage-key]
+  (case (first storage-key)
+    :pull (update-pull posh-tree storage-key)
+    :q    (:analysis (update-q posh-tree storage-key))
+    :filter-pull (update-filter-pull posh-tree storage-key)))

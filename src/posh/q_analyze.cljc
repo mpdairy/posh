@@ -3,7 +3,8 @@
    [posh.util :as util]
    [datascript.core :as d]
    [posh.datom-matcher :as dm]
-   [posh.pull-analyze :as pa]))
+   [posh.pull-analyze :as pa]
+   [clojure.core.match :refer [match]]))
 
 ;;;;;;;;; Q-datoms  -- gets datoms for a query
 
@@ -149,7 +150,7 @@
             (seq-merge-with conj stacked eav))
           (take (count (first vs)) (repeat #{})) vs))
 
-(defn pattern-from-eav [vars [e a v :as eav]]
+(defn pattern-from-eav--old [vars [e a v :as eav]]
   (let [[qe qa qv] (map qvar? eav)] 
     (for [ee (if qe ['_ (get vars e)] [e])
           aa (if qa ['_ (get vars a)] [a])
@@ -169,6 +170,47 @@
                        (<= wildcard-count qvar-count)))]
       [ee aa vv])))
 
+;; generates matching patterns from eavs.
+;; the qvars are "connecting" vars that are used between
+;; two eavs in the query. the '_ wildcards are either output
+;; vars or originally wildcards. Input vars and things like
+;; attribs that are hand-typed in the query are there as
+;; they are or as sets (if there was a var that inputted a set)
+(defn pattern-from-eav [vars eav]
+  (match [(vec eav) (vec (map qvar? eav))]
+         [['_ '_ '_] _] [[]]
+         [['_ '_ v] [_ _ false]] [['_ '_ v]]
+         [['_ '_ v] [_ _ true]] [['_ '_ (vars v)]]
+         [['_ a '_] [_ false _]] [['_ a '_]]
+         [['_ a '_] [_ true _]] [['_ (vars a) '_]]
+         [[e '_ '_] [false _ _]] [[e '_ '_]]
+         [[e '_ '_] [true _ _]] [[(vars e) '_ '_]]
+         [[e a '_] [true true _]] [[(vars e) '_ '_]
+                                   ['_ (vars a) '_]]
+         [[e a '_] [true false _]] [[(vars e) a '_]]
+         [[e a '_] [false true _]] [[e (vars a) '_]]
+         [[e '_ v] [true _ true]] [[(vars e) '_ '_]
+                                   ['_ '_ (vars v)]]
+         [[e '_ v] [true _ false]] [[(vars e) '_ v]]
+         [[e '_ v] [false _ true]] [[e '_ (vars v)]]
+         [['_ a v] [_ true true]] [['_ '_  (vars v)]
+                                   ['_ (vars a) '_]]
+         [['_ a v] [_ true false]] [['_ (vars a) v]]
+         [['_ a v] [_ false true]] [['_ a (vars v)]]
+         [[e a v] [true true true]] [['_ '_  (vars v)]
+                                     ['_ (vars a) '_]
+                                     [(vars e) '_ '_]]
+         [[e a v] [false true true]] [[e '_  (vars v)]
+                                      [e (vars a) '_]]
+         [[e a v] [true false true]] [['_ a  (vars v)]
+                                      [(vars e) a '_]]
+         [[e a v] [true true false]] [['_ (vars a) v]
+                                      [(vars e) '_ v]]
+         [[e a v] [false false true]] [[e a '_]]
+         [[e a v] [true false false]] [['_ a v]]
+         [[e a v] [false true false]] [[e '_ v]]
+         :else [[]]))
+
 
 (defn patterns-from-eavs [dbvarmap vars patterns]
   (->> (group-by first patterns)
@@ -184,17 +226,19 @@
        {(first ins) (first args)})
      (just-qvars (rest ins) (rest args)))))
 
-
 (defn get-input-sets [ins args]
-  (let [varmap  (just-qvars ins args)
-        qvars   (vec (get-all-vars (keys varmap)))
-        varvals (apply
-                 (partial d/q {:find qvars
-                               :in (keys varmap)})
-                 (vals varmap))
-        varsets (reduce (partial merge-with conj) (zipmap qvars (repeat #{}))
-                        (map #(zipmap qvars %) varvals))]
-    varsets))
+  (let [varmap  (just-qvars ins args)]
+    (if-not (empty? varmap)
+      (let
+          [qvars   (vec (get-all-vars (keys varmap)))
+           varvals (apply
+                    (partial d/q {:find qvars
+                                  :in (keys varmap)})
+                    (vals varmap))
+           varsets (reduce (partial merge-with conj) (zipmap qvars (repeat #{}))
+                           (map #(zipmap qvars %) varvals))]
+        varsets)
+      {})))
 
 ;;;; handling pulls in queries
 
@@ -337,51 +381,62 @@
 
 
 (defn q-analyze [dcfg retrieve query & args]
-  (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
-    {:results (apply (partial (:q dcfg) query) (convert-args-to :db args))}
-    (let [qm           (query-to-map query)
-          where        (normalize-all-eavs (:where qm))
-          eavs         (get-eavs where)
-          vars         (vec (get-all-vars eavs))
-          newqm        (merge qm {:find vars :where where})
-          newq         (qm-to-query newqm)
-          dbvarmap     (make-dbarg-map (:in qm) args)
-          r            (apply (partial (:q dcfg) newqm) (convert-args-to :db args))]
-      (merge
-       (when (some #{:datoms :datoms-t} retrieve)
-         (let [datoms (split-datoms(create-q-datoms r eavs vars))]
-           (merge
-            (when (some #{:datoms} retrieve)
-              {:datoms
-               (->> datoms
-                    (map (fn [[db-sym db-datoms]]
-                           {(:key (dbvarmap db-sym))
-                            db-datoms}))
-                    (apply merge))})
-            (when (some #{:datoms-t} retrieve)
-              {:datoms-t
-               (->> datoms
-                    (map (fn [[db-sym db-datoms]]
-                           (let [db (dbvarmap db-sym)]
-                             {(:key db)
-                              (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
-                    (apply merge))}))))
-       (when (some #{:results} retrieve)
-         {:results
-          (d/q {:find (vec (:find qm))
-                :in [[vars '...]]}
-               (vec r))})
-       (when (some #{:patterns} retrieve)
-         (let
-             [in-vars      (get-input-sets (:in qm) args)
-              eavs-ins     (clojure.walk/postwalk
-                            #(if-let [v (in-vars %)] v %) eavs)
-              qvar-count   (count-qvars eavs-ins)
-              linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
-              rvars        (zipmap
-                            vars
-                            (stack-vectors r))
-              prepped-eavs (clojure.walk/postwalk
-                            #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
-                            eavs-ins)]
-           {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
+  (let [qm           (merge
+                      {:in '[$]}
+                      (query-to-map query))
+        where        (normalize-all-eavs (:where qm))
+        eavs         (get-eavs where)
+        vars         (vec (get-all-vars eavs))
+        newqm        (merge qm {:find vars :where where})
+        newq         (qm-to-query newqm)
+        dbvarmap     (make-dbarg-map (:in qm) args)
+        fixed-args   (->> (zipmap (:in qm) args)
+                          (map (fn [[sym arg]]
+                                 (or (:db (get dbvarmap sym)) arg))))
+        r            (apply (partial (:q dcfg) newqm) fixed-args)]
+    (merge
+     (when (some #{:datoms :datoms-t} retrieve)
+       (let [datoms (split-datoms (create-q-datoms r eavs vars))]
+         (merge
+          (when (some #{:datoms} retrieve)
+            {:datoms
+             (->> datoms
+                  (map (fn [[db-sym db-datoms]]
+                         {(:key (dbvarmap db-sym))
+                          db-datoms}))
+                  (apply merge))})
+          (when (some #{:datoms-t} retrieve)
+            {:datoms-t
+             (->> datoms
+                  (map (fn [[db-sym db-datoms]]
+                         (let [db (dbvarmap db-sym)]
+                           {(:key db)
+                            (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
+                  (apply merge))}))))
+     (when (some #{:results} retrieve)
+       {:results
+        (d/q {:find (vec (:find qm))
+              :in [[vars '...]]}
+             (vec r))})
+     (when (some #{:patterns} retrieve)
+       (let
+           [in-vars      (get-input-sets (:in qm) args)
+            eavs-ins     (clojure.walk/postwalk
+                          #(if-let [v (in-vars %)] v %) eavs)
+            qvar-count   (count-qvars eavs-ins)
+            linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
+            rvars        (zipmap
+                          vars
+                          (stack-vectors r))
+            prepped-eavs (clojure.walk/postwalk
+                          #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
+                          eavs-ins)]
+         {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
+          :in-vars in-vars
+          :eavs-ins eavs-ins
+          :linked-qvars linked-qvars
+          :rvars rvars
+          :prepped-eavs prepped-eavs}
+         )))
+
+    ))

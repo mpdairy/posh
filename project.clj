@@ -8,7 +8,8 @@
                  [org.clojure/core.async "0.2.374"]
                  [reagent "0.5.1"]
                  [datascript "0.13.3"]
-                 ;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
+                 [org.clojure/core.match "0.3.0-alpha4"]
+                                        ;[figwheel-sidecar "0.5.0-SNAPSHOT" :scope "test"]
                  ]
   :plugins [[lein-cljsbuild "1.1.3"]]
   :cljsbuild {

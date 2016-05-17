@@ -6,6 +6,7 @@
             [posh.datom-matcher :as dm]
             [posh.tree.core :as pt]
             [posh.tree.db :as db]
+            [clojure.core.match :refer [match]]
             ))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
@@ -248,7 +249,7 @@
 
   (qa/get-input-sets )
   
-  (qa/q-analyze d/q
+  (qa/q-analyze dcfg
                 [:results :datoms :patterns]
                 '[:find ?task ?task-name ?list-name
                   :in $ ?true [?owner-name ...]
@@ -260,7 +261,38 @@
                   [?task :task/category ?cat]
                   [?task :task/done ?true]
                   [?task :task/name ?task-name]]
-                @conn true ["Matt" "Jim"])
+                {:conn conn
+                 :db   @conn
+                 :schema (:schema @conn)
+                 :key :hux}
+                true ["Matt" "Jim"])
+
+  (qa/q-analyze dcfg
+                [:patterns]
+                '[:find ?t ?d ?p
+                  :where
+                  [?t :task/name _]]
+                {:conn conn
+                 :db   @conn
+                 :schema (:schema @conn)
+                 :key :hux})
+
+  (qa/pattern-from-eav
+   '{?v
+     #{"Mop Floors" "Compose opera" "Draw a picture of a cat"
+       "stock market library" "Clean Dishes"},
+     ?a #{:person/name :task/name}
+     ?e #{7 6 9 10 8}}
+   '[_ :jim _])
+
+  
+  (qa/patterns-from-eavs
+   {'$ {:conn conn :db @conn :key :hux :schema (:schema @conn)}}
+   '{?var3284833
+     #{"Mop Floors" "Compose opera" "Draw a picture of a cat"
+       "stock market library" "Clean Dishes"},
+     ?t #{7 6 9 10 8}}
+   '([$ _ :task/name _]))
 
 
   (d/q '[:find ?p ?d ?j
@@ -331,46 +363,58 @@
   {:tree {}
    :cache {}
    :dcfg dcfg
+   :retrieve [:patterns :datoms :results]
    :conns {}
-   :conns-by-id {}})
+   :schemas {}
+   :dbs {}})
 
-  (def fulltree
-    (-> emptytree
-        (pt/add-conn conn (:schema @conn) :hux)
-        (pt/add-conn conn2 (:schema @conn2) :perm)
-        (pt/add-db conn)
-        (pt/add-pull [:patterns :datoms] [:db :hux] '[*] 3)
-        (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
-        (pt/add-filter-pull
+(def smalltree
+  (-> emptytree
+      (pt/add-conn :hux conn (:schema @conn))
+      (pt/set-db :hux @conn)
+      (pt/add-pull [:db :hux] '[*] 3)
+      (pt/add-q '[:find ?e
+                  :in $
+                  :where
+                  [?e :category/name _]]
+                [:db :hux]
+                )))
+
+(def fulltree
+  (-> emptytree
+      (pt/add-conn conn (:schema @conn) :hux)
+      (pt/add-conn conn2 (:schema @conn2) :perm)
+      (pt/set-db :hux @conn)
+      (pt/add-pull [:db :hux] '[*] 3)
+      (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
+      (pt/add-filter-pull
+       [:db :hux]
+       '[{:todo/_owner [{:category/_todo [:category/name]}]}] 1)
+      (pt/add-pull
+       '[:filter-pull
          [:db :hux]
-         '[{:todo/_owner [{:category/_todo [:category/name]}]}] 1)
-        (pt/add-pull
-         [:patterns :datoms]
-         '[:filter-pull
-           [:db :hux]
-           [{:todo/_owner [{:category/_todo [:category/name]}]}]
-           1]
-         '[*] 3)
-        (pt/add-pull [:patterns :datoms]
-                     '[:filter-tx [:db :hux] [[_ #{:category/name}]]]
-                     '[*] 3)
-        (pt/add-q [:results :datoms :patterns]
-                  '[:find ?tname ?t ?uuid ?p ?level
-                    :in $ $perm ?level
-                    :where
-                    [?t :task/name ?tname]
-                    [?t :permission/uuid ?uuid]
-                    [$perm ?p :permission/uuid ?uuid]
-                    [$perm ?p :permission/level ?level]]
-                  [:db :hux]
-                  [:db :perm]
-                  54)))
+         [{:todo/_owner [{:category/_todo [:category/name]}]}]
+         1]
+       '[*] 3)
+      (pt/add-pull '[:filter-tx [:db :hux] [[_ #{:category/name}]]]
+                   '[*] 3)
+      (pt/add-q '[:find ?tname ?t ?uuid ?p ?level
+                  :in $ $perm ?level
+                  :where
+                  [?t :task/name ?tname]
+                  [?t :permission/uuid ?uuid]
+                  [$perm ?p :permission/uuid ?uuid]
+                  [$perm ?p :permission/level ?level]]
+                [:db :hux]
+                [:db :perm]
+                54)))
 
 (get (:cache fulltree)
      '[:filter-pull
        [:db :hux]
        [{:todo/_owner [{:category/_todo [:category/name]}]}]
        1])
+
 
 (def db @conn2)
 
@@ -389,11 +433,27 @@
 
   (pt/update-cache
    fulltree
-   [:patterns :results]
    (get (:tree fulltree) [:db :hux])
    (:cache fulltree)
    [[3 :category/name "jim"]])
 
+  (pt/cache-updates smalltree
+                    (get (:tree smalltree) [:db :hux])
+                    {}
+                    [[3 :category/name "jim"]])
+
+  (pt/cache-updates fulltree
+                    {}
+                    {}
+                    [[3 :category/name "jim"]])
+
+  (get (keys (:tree fulltree))
+       '[:pull [:filter-pull [:db :hux]
+                [{:todo/_owner
+                  [{:category/_todo [:category/name]}]}] 1] [*] 3])
+
+
+  
   [{:keys [tree cache dcfg schema conn] :as posh-tree} retrieve poshdb pull-pattern eid]
   (:cache (pt/add-pull poshtree [:results :datoms-t] poshdb2 '[*] 4))
 

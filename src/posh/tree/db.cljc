@@ -17,17 +17,14 @@
       (recur (cons pdb path) (get-parent-db pdb))
       path)))
 
-(defn get-conn-attrs [posh-tree conn]
-  (get (:conns posh-tree) conn))
+(defn conn-id->conn [posh-tree conn-id]
+  (get (:conns posh-tree) conn-id))
 
-(defn get-conn-id-attrs [posh-tree conn-id]
-  (get (:conns-by-id posh-tree) conn-id))
+(defn conn-id->schema [posh-tree conn-id]
+  (get (:schemas posh-tree) conn-id))
 
-(defn conn->id [posh-tree conn]
-  (:id (get (:conns posh-tree) conn)))
-
-(defn id->conn [posh-tree id]
-  (:conn (get (:conns-by-id posh-tree) id)))
+(defn conn-id->db [posh-tree conn-id]
+  (get (:dbs posh-tree) conn-id))
 
 (defn poshdb->conn-id [poshdb]
   (if (= (first poshdb) :db)
@@ -35,9 +32,10 @@
     (recur (get-parent-db poshdb))))
 
 (defn poshdb->attrs [posh-tree poshdb]
-  (->> (poshdb->conn-id poshdb)
-       (id->conn posh-tree)
-       (get-conn-attrs posh-tree)))
+  (let [conn-id (poshdb->conn-id poshdb)]
+    {:conn   (conn-id->conn posh-tree conn-id)
+     :schema (conn-id->schema posh-tree conn-id)
+     :db     (conn-id->db posh-tree conn-id)}))
 
 (defn make-filter-pred [tx-patterns]
   (fn [_ datom]
@@ -45,7 +43,7 @@
 
 (defn poshdb->db [{:keys [dcfg cache] :as posh-tree}  poshdb]
   (if (= (first poshdb) :db)
-    ((:db dcfg) (id->conn posh-tree (second poshdb)))
+    (conn-id->db posh-tree (second poshdb))
     ((:filter dcfg)
      (poshdb->db posh-tree (get-parent-db poshdb))
      (make-filter-pred (:filter-patterns (get cache poshdb))))))
