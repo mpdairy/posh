@@ -31,11 +31,14 @@
     (second poshdb)
     (recur (get-parent-db poshdb))))
 
+(defn conn-id->attrs [posh-tree conn-id]
+  {:conn    (conn-id->conn posh-tree conn-id)
+   :schema  (conn-id->schema posh-tree conn-id)
+   :db      (conn-id->db posh-tree conn-id)
+   :conn-id conn-id})
+
 (defn poshdb->attrs [posh-tree poshdb]
-  (let [conn-id (poshdb->conn-id poshdb)]
-    {:conn   (conn-id->conn posh-tree conn-id)
-     :schema (conn-id->schema posh-tree conn-id)
-     :db     (conn-id->db posh-tree conn-id)}))
+  (conn-id->attrs posh-tree (poshdb->conn-id poshdb)))
 
 (defn make-filter-pred [tx-patterns]
   (fn [_ datom]
@@ -47,3 +50,11 @@
     ((:filter dcfg)
      (poshdb->db posh-tree (get-parent-db poshdb))
      (make-filter-pred (:filter-patterns (get cache poshdb))))))
+
+
+(defn poshdb->analyze-db [posh-tree poshdb]
+  (let [conn-id (poshdb->conn-id poshdb)]
+    {:db (poshdb->db posh-tree poshdb)
+     :conn (conn-id->conn posh-tree conn-id)
+     :schema (conn-id->schema posh-tree conn-id)
+     :conn-id conn-id}))

@@ -7,7 +7,7 @@
             [posh.tree.core :as pt]
             [posh.tree.db :as db]
             [clojure.core.match :refer [match]]
-            ))
+            [posh.tree.update :as u]))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
              :todo/owner            {:db/valueType :db.type/ref
@@ -97,6 +97,12 @@
 
   (d/pull @conn '[{:todo/_owner ...}] 1)
 
+  (pa/pull-analyze dcfg [:patterns]
+                   {:db @conn
+                    :conn-id :hux
+                    :schema @conn}
+                   '[{:todo/_owner ...}] 1)
+  
   (d/pull-many @conn '[:todo/name :todo/numbers {:category/_todo [:category/name]
                                                  :todo/owner [*]}]
                [2])
@@ -378,7 +384,30 @@
                   :where
                   [?e :category/name _]]
                 [:db :hux]
-                )))
+                )
+      (pt/add-pull [:db :hux] '[:category/name] 3)))
+
+;;; PROBLEM IS THAT add-q IS NOT ADDING Q TO TREE, OK
+
+(comment
+  (pt/add-filter-q '[:find ?e ?a
+                     :in $ ?user
+                     :where
+                     [?user :user/role ?role]
+                     [?e :security/access ?role]
+                     [?e ?a ?role]]
+                   [:db :hux]
+                   45)
+
+  '{?role :admin
+    ?e #{34 5 28 3483 20}}
+  
+  '[[45 :user/role _]
+    [#{34 5 28 3483 20} :security/access _]
+    [_ :security/access :admin]
+    []]
+
+  )
 
 (def fulltree
   (-> emptytree
@@ -437,10 +466,17 @@
    (:cache fulltree)
    [[3 :category/name "jim"]])
 
-  (pt/cache-updates smalltree
-                    (get (:tree smalltree) [:db :hux])
-                    {}
-                    [[3 :category/name "jim"]])
+  (pt/cache-updates-for-conn-id
+   smalltree
+   (get (:tree smalltree) [:db :hux])
+   {}
+   :hux
+   [[3 :category/name "jim"]])
+
+  (u/update-q smalltree '[:q [:find ?e :in $ :where [?e :category/name _]] ([:db :hux])])
+
+  (u/update-posh-item smalltree
+                      '[:q [:find ?e :in $ :where [?e :category/name _]] ([:db :hux])])
 
   (pt/cache-updates fulltree
                     {}

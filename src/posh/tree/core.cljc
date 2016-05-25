@@ -21,6 +21,7 @@
     :tree (merge {[:db conn-id] {}} tree)}))
 
 (defn add-item [tree poshdb k v]
+  (println "adding: " k)
   (update-in tree
              (db/get-db-path poshdb)
              #(merge {k v} %)))
@@ -93,14 +94,20 @@
      {:tree (rm-item tree poshdb storage-key)
       :cache (dissoc cache storage-key)})))
 
+(defn extract-conn-ids [poshdbs]
+  (if (empty? poshdbs)
+    #{}
+    (conj (extract-conn-ids (rest poshdbs)) (db/poshdb->conn-id (first poshdbs)))))
+
 (defn add-q [{:keys [tree cache dcfg conns conns-by-id retrieve] :as posh-tree} query & args]
   (let [storage-key [:q query args]
         cached      (get cache storage-key)]
     (or cached
-        (let [{:keys [analysis dbvarmap]} (u/update-q posh-tree  storage-key)]
+        (let [{:keys [analysis dbvarmap]} (u/update-q posh-tree storage-key)]
           (merge
            posh-tree
-           {:tree (loop [tree tree
+           {
+            :tree (loop [tree tree
                          poshdbs (vals dbvarmap)]
                     (if (empty? poshdbs)
                       tree
@@ -157,17 +164,25 @@
 
   )
 
-(declare cache-updates)
-(defn cache-updates-db [posh-tree db-analysis tx children siblings new-cache]
+(defn cache-updates [posh-tree ])
+
+(declare cache-updates-for-conn-id)
+(defn cache-updates-db [posh-tree db-analysis conn-id tx children siblings new-cache]
   (let [matching-tx    (dm/matching-datoms
                         (:filter-patterns db-analysis)
                         tx)
-        children-cache (cache-updates posh-tree children new-cache matching-tx)]
-    (cache-updates posh-tree siblings
-                   (merge children-cache new-cache)
-                   tx)))
+        children-cache (cache-updates-for-conn-id
+                        posh-tree children new-cache conn-id matching-tx)]
+    (cache-updates-for-conn-id posh-tree siblings
+                               (merge children-cache new-cache)
+                               conn-id
+                               tx)))
 
-(defn cache-updates [posh-tree tree new-cache tx]
+
+;;; needs to take map of {conn-id tx} and update all,
+;; cycling through the tx's for various conns
+(defn cache-updates-for-conn-id [posh-tree tree new-cache conn-id tx]
+  (println (ffirst tree))
   (match [(vec tree) tx]
          [_ []] {}
 
@@ -181,26 +196,29 @@
                  [{query-key _} _] {}
 
                  [_ {query-key query-analysis}]
-                 (if (dm/any-datoms-match?  (:patterns query-analysis) tx)
+                 (if (dm/any-datoms-match?  (get (:patterns query-analysis) conn-id) tx)
                    {query-key (u/update-posh-item posh-tree query-key)}
                    {}))
-          (cache-updates posh-tree siblings new-cache tx))
+          (cache-updates-for-conn-id posh-tree siblings new-cache conn-id tx))
 
          ;; db's, filters, with, merged filters
          [[[db-key children] & siblings] tx]
          (match [new-cache (:cache posh-tree)]
 
                 [{db-key db-analysis} _]
-                (cache-updates-db posh-tree db-analysis tx children siblings new-cache)
+                (cache-updates-db
+                 posh-tree db-analysis conn-id tx children siblings new-cache)
 
                 [_ {db-key db-analysis}]
-                (if (dm/any-datoms-match?  (:patterns db-analysis) tx)
-                  (cache-updates
+                (if (dm/any-datoms-match?  (get (:patterns db-analysis) conn-id) tx)
+                  (cache-updates-for-conn-id
                    posh-tree
                    tree
                    (merge {db-key (u/update-posh-item posh-tree db-key)})
+                   conn-id
                    tx)
-                  (cache-updates-db posh-tree db-analysis tx children siblings new-cache)))))
+                  (cache-updates-db
+                   posh-tree db-analysis conn-id tx children siblings new-cache)))))
 
 (comment
   (defn cache-changes [dcfg retrieve tree current-cache new-cache tx]

@@ -211,11 +211,56 @@
          [[e a v] [false true false]] [[e '_ v]]
          :else [[]]))
 
+;; this is the pattern that tells the filter it should update.
+;; it won't match any v's that change unless they are connected
+;; to some other part of the query. i.e. if the query is looking
+;; at :person/name it won't update when the name changes.
+(defn filter-pattern-from-eav [vars eav]
+  (match [(vec eav) (vec (map qvar? eav))]
+         [['_ '_ '_] _] []  ;; if it matches everything, it never
+         ;; needs to update itself
+         [['_ '_ v] [_ _ false]] [['_ '_ v]]
+         [['_ '_ v] [_ _ true]] [['_ '_ (vars v)]]
+         [['_ a '_] [_ false _]] [['_ a '_]]
+         [['_ a '_] [_ true _]] [['_ (vars a) '_]]
+         [[e '_ '_] [false _ _]] [[e '_ '_]]
+         [[e '_ '_] [true _ _]] [[(vars e) '_ '_]]
+         [[e a '_] [true true _]] [[(vars e) '_ '_]
+                                   ['_ (vars a) '_]]
+         [[e a '_] [true false _]] [[(vars e) a '_]]
+         [[e a '_] [false true _]] [[e (vars a) '_]]
+         [[e '_ v] [true _ true]] [[(vars e) '_ '_]
+                                   ['_ '_ (vars v)]]
+         [[e '_ v] [true _ false]] [[(vars e) '_ v]]
+         [[e '_ v] [false _ true]] [[e '_ (vars v)]]
+         [['_ a v] [_ true true]] [['_ '_  (vars v)]
+                                   ['_ (vars a) '_]]
+         [['_ a v] [_ true false]] [['_ (vars a) v]]
+         [['_ a v] [_ false true]] [['_ a (vars v)]]
+         [[e a v] [true true true]] [['_ '_  (vars v)]
+                                     ['_ (vars a) '_]
+                                     [(vars e) '_ '_]]
+         [[e a v] [false true true]] [[e '_  (vars v)]
+                                      [e (vars a) '_]]
+         [[e a v] [true false true]] [['_ a  (vars v)]
+                                      [(vars e) a '_]]
+         [[e a v] [true true false]] [['_ (vars a) v]
+                                      [(vars e) '_ v]]
+         [[e a v] [false false true]] [[e a '_]]
+         [[e a v] [true false false]] [['_ a v]]
+         [[e a v] [false true false]] [[e '_ v]]
+         :else [[]]))
 
 (defn patterns-from-eavs [dbvarmap vars patterns]
   (->> (group-by first patterns)
        (map (fn [[k v]]
-              {(:key (dbvarmap k)) (mapcat #(pattern-from-eav vars (rest %)) v)}))
+              {(:conn-id (dbvarmap k)) (mapcat #(pattern-from-eav vars (rest %)) v)}))
+       (apply merge)))
+
+(defn filter-patterns-from-eavs [dbvarmap vars patterns]
+  (->> (group-by first patterns)
+       (map (fn [[k v]]
+              {(:conn-id (dbvarmap k)) (mapcat #(filter-pattern-from-eav vars (rest %)) v)}))
        (apply merge)))
 
 (defn just-qvars [ins args]
@@ -327,6 +372,7 @@
 
 ;; it will return the requested info, sorted by key.
 
+;; not necessarily working at this time...
 (defn q-analyze-with-pulls [dcfg retrieve query & args]
   (if (and (= 1 (count retrieve)) (some #{:results} retrieve))
     {:results (apply (partial (:q dcfg) query) (convert-args-to :db args))}
@@ -402,7 +448,7 @@
             {:datoms
              (->> datoms
                   (map (fn [[db-sym db-datoms]]
-                         {(:key (dbvarmap db-sym))
+                         {(:conn-id (dbvarmap db-sym))
                           db-datoms}))
                   (apply merge))})
           (when (some #{:datoms-t} retrieve)
@@ -410,7 +456,7 @@
              (->> datoms
                   (map (fn [[db-sym db-datoms]]
                          (let [db (dbvarmap db-sym)]
-                           {(:key db)
+                           {(:conn-id db)
                             (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
                   (apply merge))}))))
      (when (some #{:results} retrieve)
@@ -418,7 +464,7 @@
         (d/q {:find (vec (:find qm))
               :in [[vars '...]]}
              (vec r))})
-     (when (some #{:patterns} retrieve)
+     (when (some #{:patterns :filter-patterns} retrieve)
        (let
            [in-vars      (get-input-sets (:in qm) args)
             eavs-ins     (clojure.walk/postwalk
@@ -431,12 +477,9 @@
             prepped-eavs (clojure.walk/postwalk
                           #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
                           eavs-ins)]
-         {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
-          :in-vars in-vars
-          :eavs-ins eavs-ins
-          :linked-qvars linked-qvars
-          :rvars rvars
-          :prepped-eavs prepped-eavs}
-         )))
+         (merge
+          (when (some #{:patterns} retrieve)
+            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)})
+          (when (some #{:filter-patterns} retrieve)
+            {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))
 
-    ))

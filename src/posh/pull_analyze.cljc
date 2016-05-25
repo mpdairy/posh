@@ -169,7 +169,8 @@
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
-(defn pull-analyze [dcfg retrieve schema db pull-pattern ent-id]
+;; db should be {:db db :schema schema :conn-id conn-id}
+(defn pull-analyze [dcfg retrieve {:keys [db conn-id schema]} pull-pattern ent-id]
   (when-not (empty? retrieve)
     (let [affected-datoms
           (pull-affected-datoms (:pull dcfg) db pull-pattern ((:entid dcfg) db ent-id))]
@@ -180,18 +181,19 @@
          (let [datoms (generate-affected-tx-datoms-for-pull schema affected-datoms)]
            (merge
             (when (some #{:datoms} retrieve)
-              {:datoms datoms})
+              {:datoms {conn-id datoms}})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms (:q dcfg) db datoms)}))))
+              {:datoms-t {conn-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
        (when (some #{:patterns} retrieve)
          {:patterns
-          (dm/reduce-patterns
-           (tx-pattern-for-pull
-            schema
-            (insert-dbid (remove-limits pull-pattern))
-            affected-datoms))})))))
+          {conn-id
+           (dm/reduce-patterns
+            (tx-pattern-for-pull
+             schema
+             (insert-dbid (remove-limits pull-pattern))
+             affected-datoms))}})))))
  
-(defn pull-many-analyze [dcfg retrieve schema db pull-pattern ent-ids]
+(defn pull-many-analyze [dcfg retrieve {:keys [db schema conn-id]} pull-pattern ent-ids]
   (when-not (empty? retrieve)
     (let [resolved-ent-ids (map #((:entid dcfg) db %) ent-ids)
           affected-datoms
@@ -205,20 +207,21 @@
                            affected-datoms)]
            (merge
             (when (some #{:datoms} retrieve)
-              {:datoms datoms})
+              {:datoms {conn-id datoms}})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t (util/t-for-datoms (:q dcfg) db datoms)}))))
+              {:datoms-t {conn-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
        (when (some #{:patterns} retrieve)
          {:patterns
-          (let [patterns
-                (map
-                 #(tx-pattern-for-pull
-                   schema
-                   (insert-dbid (remove-limits pull-pattern)) %)
-                 affected-datoms)]
-            (cons
-             (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
-             (mapcat rest patterns))
-            (dm/reduce-patterns (apply concat patterns))
-            )})))))
+          {conn-id
+           (let [patterns
+                 (map
+                  #(tx-pattern-for-pull
+                    schema
+                    (insert-dbid (remove-limits pull-pattern)) %)
+                  affected-datoms)]
+             (cons
+              (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
+              (mapcat rest patterns))
+             (dm/reduce-patterns (apply concat patterns))
+             )}})))))
 

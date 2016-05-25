@@ -7,15 +7,14 @@
             [posh.tree.db :as db]))
 
 (defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
-  (let [[_ poshdb pull-pattern eid] storage-key
-        conn-id                     (db/poshdb->conn-id poshdb)]
+  (let [[_ poshdb pull-pattern eid] storage-key]
     (pa/pull-analyze dcfg
                      (cons :patterns retrieve)
-                     (get (:schemas posh-tree) conn-id)
-                     (db/poshdb->db posh-tree poshdb)
+                     (db/poshdb->analyze-db posh-tree poshdb)
                      pull-pattern
                      eid)))
 
+;; should cons :filter-patterns and :patterns into retrieve
 (defn update-filter-pull [posh-tree storage-key]
   (println "big money, open hand.")
   (let [analysis (update-pull posh-tree storage-key)]
@@ -30,18 +29,13 @@
         poshdbs        (vals dbvarmap)
         poshdbmap      (->> dbvarmap
                             (map (fn [[db-sym poshdb]]
-                                   (let [db    (db/poshdb->db posh-tree poshdb)
-                                         attrs (db/poshdb->attrs posh-tree poshdb)]
-                                     {db-sym
-                                      {:conn (:conn attrs)
-                                       :db db
-                                       :key poshdb
-                                       :schema (:schema attrs)}})))
+                                   {db-sym
+                                    (db/poshdb->analyze-db posh-tree poshdb)}))
                             (apply merge))
         fixed-args     (->> (zipmap (:in qm) args)
                             (map (fn [[sym arg]]
                                    (or (get poshdbmap sym) arg))))]
-    {:dvbarmap dbvarmap
+    {:dbvarmap dbvarmap
      :analysis
      (apply
       (partial qa/q-analyze dcfg retrieve query)
