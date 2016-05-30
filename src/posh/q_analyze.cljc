@@ -426,7 +426,7 @@
            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
 
 
-(defn q-analyze [dcfg retrieve query & args]
+(defn q-analyze [dcfg retrieve query args]
   (let [qm           (merge
                       {:in '[$]}
                       (query-to-map query))

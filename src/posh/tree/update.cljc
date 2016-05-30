@@ -8,19 +8,31 @@
 
 (defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   (let [[_ poshdb pull-pattern eid] storage-key]
-    (pa/pull-analyze dcfg
-                     (cons :patterns retrieve)
-                     (db/poshdb->analyze-db posh-tree poshdb)
-                     pull-pattern
-                     eid)))
+    (let [analysis (pa/pull-analyze dcfg
+                                    (cons :patterns retrieve)
+                                    (db/poshdb->analyze-db posh-tree poshdb)
+                                    pull-pattern
+                                    eid)]
+      (dissoc
+       (merge analysis
+              {:reload-patterns (:patterns analysis)
+               :reload-fn 'posh.tree.update/update-filter-pull})
+       :patterns))))
 
 ;; should cons :filter-patterns and :patterns into retrieve
+;; TODO: add real reload and pass patterns
 (defn update-filter-pull [posh-tree storage-key]
-  (println "big money, open hand.")
-  (let [analysis (update-pull posh-tree storage-key)]
-    (assoc analysis :filter-patterns (:patterns analysis))))
+  (println "updated filter-pull: " storage-key)
+  (let [analysis (update-pull (update posh-tree :retrieve (partial cons :ref-patterns))
+                              storage-key)]
+    (dissoc
+     (merge analysis
+            {:pass-patterns (:patterns analysis)
+             :reload-patterns (:ref-patterns analysis)
+             :reload-fn 'posh.tree.update/update-filter-pull})
+     :patterns :ref-patterns)))
 
-(defn update-q [{:keys [dcfg retrieve] :as posh-tree} storage-key]
+(defn update-q-with-dbvarmap [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   "Returns {:dbvarmap .. :analysis ..}"
   (let [[_ query args] storage-key
         retrieve       (cons :patterns retrieve)
@@ -36,10 +48,13 @@
                             (map (fn [[sym arg]]
                                    (or (get poshdbmap sym) arg))))]
     {:dbvarmap dbvarmap
-     :analysis
-     (apply
-      (partial qa/q-analyze dcfg retrieve query)
-      fixed-args)}))
+     :analysis (let [analysis (qa/q-analyze dcfg retrieve query fixed-args)]
+                 (merge analysis
+                        {:reload-patterns (:patterns analysis)
+                         :reload-fn 'posh.tree.update/update-q}))}))
+
+(defn update-q [posh-tree storage-key]
+  (:analysis (update-q-with-dbvarmap posh-tree storage-key)))
 
 (defn update-posh-item [posh-tree storage-key]
   (case (first storage-key)

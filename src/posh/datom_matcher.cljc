@@ -14,11 +14,18 @@
   (some #(datom-match-pattern? % datom) patterns))
 
 (defn any-datoms-match? [patterns datoms]
-  (some #(datom-match? patterns %) datoms))
-
+  (case patterns
+    nil nil
+    [] nil
+    [[]] true
+    (some #(datom-match? patterns %) datoms)))
 
 (defn matching-datoms [patterns datoms]
-  (filter #(datom-match? patterns %) datoms))
+  (case patterns
+    [] datoms
+    [[]] datoms
+    nil nil
+    (filter #(datom-match? patterns %) datoms)))
 
 (defn combine-entids [entids rest-datom patterns new-patterns leftover-patterns]
   (if (empty? patterns)

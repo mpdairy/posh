@@ -6,6 +6,7 @@
             [posh.q-analyze :as qa]
             [posh.tree.update :as u]
             [posh.tree.db :as db]
+            [posh.tree.graph :as graph]
             [clojure.core.match :refer [match]]))
 
 (defn add-conn [{:keys [conns schemas] :as posh-tree} conn-id conn schema]
@@ -14,11 +15,14 @@
    {:conns (assoc conns conn-id conn)
     :schemas (assoc schemas conn-id schema)}))
 
-(defn set-db [{:keys [tree dbs] :as posh-tree} conn-id db]
-  (merge
-   posh-tree
-   {:dbs (assoc dbs conn-id db)
-    :tree (merge {[:db conn-id] {}} tree)}))
+(defn set-db [{:keys [tree dbs graph] :as posh-tree} conn-id db]
+  (let [storage-key [:db conn-id]]
+    (merge
+     posh-tree
+     {:dbs (assoc dbs conn-id db)
+      :cache (merge {storage-key {:pass-patterns {conn-id [[]]}}})
+      :graph (graph/add-item-full graph storage-key [] [])
+      :tree (merge {storage-key {}} tree)})))
 
 (defn add-item [tree poshdb k v]
   (println "adding: " k)
@@ -31,16 +35,19 @@
              (db/get-db-path poshdb)
              #(dissoc % key)))
 
-(defn add-filter-tx [{:keys [tree cache] :as posh-tree} poshdb tx-patterns]
+;; tx-patterns needs to specify which conn-id the patterns are for
+;; so tx-patterns should take {:connid1 [patterns...] :connid2 [patterns...]}
+(defn add-filter-tx [{:keys [tree cache graph] :as posh-tree} poshdb tx-patterns]
   (let [storage-key   [:filter-tx poshdb tx-patterns]
         cached-filter (or (get cache storage-key)
-                          {:filter-patterns tx-patterns})]
+                          {:pass-patterns tx-patterns})]
     (merge
      posh-tree
-     {:tree (add-item tree poshdb storage-key {})
+     {:graph (graph/add-item-connect graph storage-key [poshdb])
+      :tree (add-item tree poshdb storage-key {})
       :cache (assoc cache storage-key cached-filter)})))
 
-(defn add-filter-pull [{:keys [tree cache dcfg conns conns-by-id] :as posh-tree}
+(defn add-filter-pull [{:keys [tree cache graph dcfg conns conns-by-id] :as posh-tree}
                        poshdb pull-pattern eid]
   (let [storage-key [:filter-pull poshdb pull-pattern eid]
         cached      (get cache storage-key)]
@@ -48,23 +55,25 @@
       posh-tree
       (merge
        posh-tree
-       {:tree (add-item tree poshdb storage-key {})
+       {:graph (graph/add-item-connect graph storage-key [poshdb])
+        :tree (add-item tree poshdb storage-key {})
         :cache (assoc cache storage-key
                       (u/update-filter-pull posh-tree  storage-key))}))))
 
-(defn add-filter-q [{:keys [tree cache dcfg retrieve conns conns-by-id] :as posh-tree} query & args]
+(defn add-filter-q [{:keys [tree graph cache dcfg retrieve conns conns-by-id] :as posh-tree} query & args]
   (let [storage-key [:filter-q query args]
         cached      (get cache storage-key)]
     (or cached
-        (let [{:keys [analysis dbvarmap]} (u/update-q posh-tree storage-key)]
+        (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
           (merge
            posh-tree
-           {:tree (loop [tree tree
-                         poshdbs (vals dbvarmap)]
-                    (if (empty? poshdbs)
-                      tree
-                      (recur (add-item tree (first poshdbs) storage-key :query)
-                             (rest poshdbs))))
+           {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
+            :tree  (loop [tree tree
+                          poshdbs (vals dbvarmap)]
+                     (if (empty? poshdbs)
+                       tree
+                       (recur (add-item tree (first poshdbs) storage-key :query)
+                              (rest poshdbs))))
             :cache (assoc cache storage-key analysis)})))))
 
 (defn rm-filter-tx [posh-tree poshdb tx-patterns]
@@ -73,8 +82,7 @@
           (rm-item (:tree posh-tree) poshdb [:filter-tx poshdb tx-patterns])}))
 
 ;;queries
-
-(defn add-pull [{:keys [tree cache dcfg conns conns-by-id retrieve] :as posh-tree} poshdb pull-pattern eid]
+(defn add-pull [{:keys [tree graph cache dcfg conns conns-by-id retrieve] :as posh-tree} poshdb pull-pattern eid]
   (let [storage-key [:pull poshdb pull-pattern eid]
         cached      (get cache storage-key)]
     (if cached
@@ -84,7 +92,8 @@
                       (u/update-pull posh-tree storage-key))]
         (merge
          posh-tree
-         {:tree (add-item tree poshdb storage-key :query)
+         {:graph (graph/add-item-connect graph storage-key [poshdb])
+          :tree  (add-item tree poshdb storage-key :query)
           :cache (assoc cache storage-key analysis)})))))
 
 (defn rm-pull [{:keys [tree cache] :as posh-tree} poshdb pull-pattern eid]
@@ -99,14 +108,14 @@
     #{}
     (conj (extract-conn-ids (rest poshdbs)) (db/poshdb->conn-id (first poshdbs)))))
 
-(defn add-q [{:keys [tree cache dcfg conns conns-by-id retrieve] :as posh-tree} query & args]
+(defn add-q [{:keys [tree cache graph dcfg conns conns-by-id retrieve] :as posh-tree} query & args]
   (let [storage-key [:q query args]
         cached      (get cache storage-key)]
     (or cached
-        (let [{:keys [analysis dbvarmap]} (u/update-q posh-tree storage-key)]
+        (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
           (merge
            posh-tree
-           {
+           {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
             :tree (loop [tree tree
                          poshdbs (vals dbvarmap)]
                     (if (empty? poshdbs)
@@ -164,7 +173,6 @@
 
   )
 
-(defn cache-updates [posh-tree ])
 
 (declare cache-updates-for-conn-id)
 (defn cache-updates-db [posh-tree db-analysis conn-id tx children siblings new-cache]
@@ -177,6 +185,8 @@
                                (merge children-cache new-cache)
                                conn-id
                                tx)))
+
+
 
 
 ;;; needs to take map of {conn-id tx} and update all,
@@ -219,6 +229,55 @@
                    tx)
                   (cache-updates-db
                    posh-tree db-analysis conn-id tx children siblings new-cache)))))
+
+
+(def filters #{:filter-tx :filter-q :filter-pull})
+(def queries #{:q :pull :q-tx :pull-tx})
+(def dbs #{:db})
+(defn posh-type [item]
+  (let [t (first item)]
+    (cond
+     (filters t) :filter
+     (queries t) :query
+     (dbs t) :db
+     :else :unknown)))
+
+(declare cache-changes)
+(defn cache-changes-across [posh-tree conn-id tx new-cache storage-keys]
+  (if (empty? storage-keys)
+    new-cache
+    (recur posh-tree conn-id tx
+           (merge new-cache
+                  (cache-changes posh-tree conn-id tx new-cache (first storage-keys)))
+           (rest storage-keys))))
+
+(defn cache-changes [{:keys [graph cache] :as posh-tree} conn-id tx new-cache storage-key]
+  (if (get new-cache storage-key)
+    {}
+    (let [current-analysis  (get cache storage-key)
+          reloaded          (when (dm/any-datoms-match?
+                                   (get (:reload-patterns current-analysis) conn-id)
+                                   tx)
+                              ((resolve (:reload-fn current-analysis)) posh-tree storage-key))
+          analysis          (or reloaded current-analysis)
+          {:keys [outputs]} (get graph storage-key)
+          children-cache    (when-let
+                                [pass-tx (and (not (empty? outputs))
+                                              (get (:pass-patterns analysis) conn-id)
+                                              (dm/matching-datoms
+                                               (get (:pass-patterns analysis) conn-id)
+                                               tx))]
+                              (reduce
+                               (fn [acc k]
+                                 (merge acc
+                                        (cache-changes posh-tree conn-id pass-tx acc k)))
+                               new-cache
+                               outputs))]
+      (merge children-cache
+             (when reloaded
+               {storage-key reloaded})
+             {}))))
+
 
 (comment
   (defn cache-changes [dcfg retrieve tree current-cache new-cache tx]

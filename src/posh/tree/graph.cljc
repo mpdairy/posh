@@ -27,6 +27,22 @@
 (defn add-output [graph item-k output]
   (update-item graph item-k :outputs #(conj % output)))
 
+(defn add-item-full [graph item-k inputs outputs]
+  (reduce (fn [gr input] (add-input gr item-k input))
+          (reduce (fn [gr output] (add-output gr item-k output))
+                  (add-item graph item-k)
+                  outputs)
+          inputs))
+
+;; connects item to output of inputs
+(defn add-item-connect [graph item-k inputs]
+  (reduce (fn [gr input]
+            (-> gr
+                (add-input item-k input)
+                (add-output input item-k)))
+          (add-item graph item-k)
+          inputs))
+
 ;; remove-input :: graph -> key -> key -> graph
 (defn remove-input [graph item-k input]
   (update-item graph item-k :inputs #(disj % input)))

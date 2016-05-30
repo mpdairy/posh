@@ -166,6 +166,35 @@
                pull-maps)))))
 
 
+(defn tx-ref-pattern-for-pull [schema pull-pattern affected-pull]
+  (let [entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
+        val-keys    (remove #(or (reverse-lookup? %) (ref? schema %)) entity-keys)
+        ref-keys    (->> entity-keys
+                         (remove (set val-keys))
+                         (map (fn [k] {k [:db/id]})))
+        starred?    (some #{'*} val-keys)
+        pull-maps   (reduce merge (concat ref-keys (filter map? pull-pattern)))]
+    (when (:db/id affected-pull)
+      (mapcat (fn [[ref-key ref-pull]]
+                (let [r? (reverse-lookup? ref-key)
+                      unrev-key (if r? (reverse-lookup ref-key) ref-key)]
+                  (concat
+                   (if r?
+                     [['_ unrev-key (:db/id affected-pull)]]
+                     [[(:db/id affected-pull) ref-key '_]])
+                   (cond
+                    (recursive-val? ref-pull)
+                    (when (ref-key affected-pull)
+                      (mapcat #(tx-ref-pattern-for-pull schema pull-pattern %)
+                              (ref-key affected-pull)))
+
+                    (or r? (cardinality-many? schema unrev-key))
+                    (mapcat #(tx-ref-pattern-for-pull schema ref-pull %)
+                            (ref-key affected-pull))
+                    :else
+                    (tx-ref-pattern-for-pull schema ref-pull (ref-key affected-pull))))))
+              pull-maps))))
+
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
@@ -184,14 +213,25 @@
               {:datoms {conn-id datoms}})
             (when (some #{:datoms-t} retrieve)
               {:datoms-t {conn-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
-       (when (some #{:patterns} retrieve)
-         {:patterns
-          {conn-id
-           (dm/reduce-patterns
-            (tx-pattern-for-pull
-             schema
-             (insert-dbid (remove-limits pull-pattern))
-             affected-datoms))}})))))
+       (when (some #{:patterns :ref-patterns} retrieve)
+         (let [prepped-pull-pattern (insert-dbid (remove-limits pull-pattern))]
+           (merge
+            (when (some #{:patterns} retrieve)
+              {:patterns
+               {conn-id
+                (dm/reduce-patterns
+                 (tx-pattern-for-pull
+                  schema
+                  prepped-pull-pattern
+                  affected-datoms))}})
+            (when (some #{:ref-patterns} retrieve)
+              {:ref-patterns
+               {conn-id
+                (dm/reduce-patterns
+                 (tx-reload-pattern-for-pull
+                  schema
+                  prepped-pull-pattern
+                  affected-datoms))}}))))))))
  
 (defn pull-many-analyze [dcfg retrieve {:keys [db schema conn-id]} pull-pattern ent-ids]
   (when-not (empty? retrieve)

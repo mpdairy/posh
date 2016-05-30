@@ -87,20 +87,59 @@
 
 (comment
 
-  (pa/pull-analyze d/pull d/q d/entid
+  (pa/pull-analyze dcfg
                    [:datoms :results :patterns]
-                   (:schema @conn)
-                   (d/db conn)
-                   '[:todo/name :todo/numbers {:category/_todo [:category/name]
-                                               :todo/owner [*]}]
+                   {:db @conn
+                    :conn-id :hux
+                    :schema (:schema @conn)}
+                   '[:todo/name :todo/numbers
+                     {:category/_todo [:category/name]
+                      :todo/owner [*]}]
                    2)
+
+  (pa/tx-pattern-for-pull
+   (:schema @conn)
+   '[:todo/name :todo/numbers
+     {:category/_todo [:category/name]
+      :todo/owner [*]}]
+   {:db/id 2,
+    :todo/name "Matt's List",
+    :todo/numbers [12 20 443],
+    :category/_todo
+    [{:db/id 3, :category/name "At Home"}
+     {:db/id 4, :category/name "Work Stuff"}
+     {:db/id 5, :category/name "Hobby"}],
+    :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}})
+
+  (pa/tx-reload-pattern-for-pull
+   (:schema @conn)
+   '[:todo/name :todo/numbers
+     {:category/_todo [:category/name]
+      :todo/owner [*]}]
+   {:db/id 2,
+    :todo/name "Matt's List",
+    :todo/numbers [12 20 443],
+    :category/_todo
+    [{:db/id 3, :category/name "At Home"}
+     {:db/id 4, :category/name "Work Stuff"}
+     {:db/id 5, :category/name "Hobby"}],
+    :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}})
+
+  {:db/id 2,
+   :todo/name "Matt's List",
+   :todo/numbers [12 20 443],
+   :category/_todo
+   [{:db/id 3, :category/name "At Home"}
+    {:db/id 4, :category/name "Work Stuff"}
+    {:db/id 5, :category/name "Hobby"}],
+   :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}}
 
   (d/pull @conn '[{:todo/_owner ...}] 1)
 
   (pa/pull-analyze dcfg [:patterns]
                    {:db @conn
                     :conn-id :hux
-                    :schema @conn}
+                    :schema (:schema @conn)}
                    '[{:todo/_owner ...}] 1)
   
   (d/pull-many @conn '[:todo/name :todo/numbers {:category/_todo [:category/name]
@@ -368,6 +407,7 @@
 (def emptytree
   {:tree {}
    :cache {}
+   :graph {}
    :dcfg dcfg
    :retrieve [:patterns :datoms :results]
    :conns {}
@@ -383,9 +423,16 @@
                   :in $
                   :where
                   [?e :category/name _]]
-                [:db :hux]
-                )
+                [:db :hux])
       (pt/add-pull [:db :hux] '[:category/name] 3)))
+
+(u/update-q-with-dbvarmap
+ smalltree
+ [:q '[:find ?e
+       :in $
+       :where
+       [?e :category/name _]]
+  '([:db :hux])])
 
 ;;; PROBLEM IS THAT add-q IS NOT ADDING Q TO TREE, OK
 
@@ -438,6 +485,8 @@
                 [:db :perm]
                 54)))
 
+(:graph fulltree)
+
 (get (:cache fulltree)
      '[:filter-pull
        [:db :hux]
@@ -465,6 +514,17 @@
    (get (:tree fulltree) [:db :hux])
    (:cache fulltree)
    [[3 :category/name "jim"]])
+
+
+  (pt/cache-changes
+   smalltree
+   :hux
+   [[3 :category/name "jim"]]
+   {}
+   [:db :hux])
+
+  (:graph smalltree)
+  (keys (:graph smalltree))
 
   (pt/cache-updates-for-conn-id
    smalltree
