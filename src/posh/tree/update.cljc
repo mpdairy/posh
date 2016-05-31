@@ -7,6 +7,7 @@
             [posh.tree.db :as db]))
 
 (defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
+  ;;(println "updated pull: " storage-key)
   (let [[_ poshdb pull-pattern eid] storage-key]
     (let [analysis (pa/pull-analyze dcfg
                                     (cons :patterns retrieve)
@@ -16,26 +17,28 @@
       (dissoc
        (merge analysis
               {:reload-patterns (:patterns analysis)
-               :reload-fn 'posh.tree.update/update-filter-pull})
+               :reload-fn 'posh.tree.update/update-pull})
        :patterns))))
 
-;; should cons :filter-patterns and :patterns into retrieve
-;; TODO: add real reload and pass patterns
-(defn update-filter-pull [posh-tree storage-key]
-  (println "updated filter-pull: " storage-key)
-  (let [analysis (update-pull (update posh-tree :retrieve (partial cons :ref-patterns))
-                              storage-key)]
-    (dissoc
-     (merge analysis
-            {:pass-patterns (:patterns analysis)
-             :reload-patterns (:ref-patterns analysis)
-             :reload-fn 'posh.tree.update/update-filter-pull})
-     :patterns :ref-patterns)))
+(defn update-filter-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
+  ;;(println "updated filter-pull: " storage-key)
+  (let [[_ poshdb pull-pattern eid] storage-key]
+    (let [analysis (pa/pull-analyze dcfg
+                                    (concat [:patterns :ref-patterns] retrieve)
+                                    (db/poshdb->analyze-db posh-tree poshdb)
+                                    pull-pattern
+                                    eid)]
+      (dissoc
+       (merge analysis
+              {:pass-patterns (first (vals (:patterns analysis)))
+               :reload-patterns (:ref-patterns analysis)
+               :reload-fn 'posh.tree.update/update-filter-pull})
+       :patterns :ref-patterns))))
 
 (defn update-q-with-dbvarmap [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   "Returns {:dbvarmap .. :analysis ..}"
   (let [[_ query args] storage-key
-        retrieve       (cons :patterns retrieve)
+        retrieve       (concat [:results :patterns] retrieve)
         qm             (qa/query-to-map query)
         dbvarmap       (qa/make-dbarg-map (:in qm) args)
         poshdbs        (vals dbvarmap)
@@ -54,7 +57,23 @@
                          :reload-fn 'posh.tree.update/update-q}))}))
 
 (defn update-q [posh-tree storage-key]
+  ;;(println "updated q: " storage-key)
   (:analysis (update-q-with-dbvarmap posh-tree storage-key)))
+
+(defn reduce-entities [r]
+    (reduce (fn [acc xs] (reduce (fn [acc x] (conj acc x)) acc xs)) #{} r))
+
+(defn filter-q-transform-analysis [analysis]
+  (dissoc
+   (merge analysis
+          {:pass-patterns [[(reduce-entities (:results analysis))]]
+           :reload-patterns (:patterns analysis)
+           :reload-fn 'posh.tree.update/update-filter-q})
+   :results :patterns))
+
+(defn update-filter-q [posh-tree storage-key]
+  (println "update-filter-q" storage-key)
+  (filter-q-transform-analysis (:analysis (update-q-with-dbvarmap posh-tree storage-key))))
 
 (defn update-posh-item [posh-tree storage-key]
   (case (first storage-key)

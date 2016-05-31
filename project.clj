@@ -16,7 +16,7 @@
               :builds [ {:id "posh" 
                          :source-paths ["src/"]
                          :figwheel false
-                         :compiler {  :main "posh.core"
+                         :compiler {:main "posh.core"
                                     :asset-path "js"
                                     :output-to "resources/public/js/main.js"
                                     :output-dir "resources/public/js"} } ]

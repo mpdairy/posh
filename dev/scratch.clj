@@ -69,106 +69,6 @@
 
 (populate! conn)
 
-(def filly
-  (d/filter @conn (fn [_ datom]
-                    (println "filly " (first datom))
-                    (even? (first datom)))))
-
-(def bobo
-  (d/filter filly (fn [_ datom]
-                    (println "bobo " (first datom))
-                    (= (mod (first datom) 4) 0))))
-
-
-
-(d/pull bobo '[*] 4)
-
-
-
-(comment
-
-  (pa/pull-analyze dcfg
-                   [:datoms :results :patterns]
-                   {:db @conn
-                    :conn-id :hux
-                    :schema (:schema @conn)}
-                   '[:todo/name :todo/numbers
-                     {:category/_todo [:category/name]
-                      :todo/owner [*]}]
-                   2)
-
-  (pa/tx-pattern-for-pull
-   (:schema @conn)
-   '[:todo/name :todo/numbers
-     {:category/_todo [:category/name]
-      :todo/owner [*]}]
-   {:db/id 2,
-    :todo/name "Matt's List",
-    :todo/numbers [12 20 443],
-    :category/_todo
-    [{:db/id 3, :category/name "At Home"}
-     {:db/id 4, :category/name "Work Stuff"}
-     {:db/id 5, :category/name "Hobby"}],
-    :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}})
-
-  (pa/tx-reload-pattern-for-pull
-   (:schema @conn)
-   '[:todo/name :todo/numbers
-     {:category/_todo [:category/name]
-      :todo/owner [*]}]
-   {:db/id 2,
-    :todo/name "Matt's List",
-    :todo/numbers [12 20 443],
-    :category/_todo
-    [{:db/id 3, :category/name "At Home"}
-     {:db/id 4, :category/name "Work Stuff"}
-     {:db/id 5, :category/name "Hobby"}],
-    :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}})
-
-  {:db/id 2,
-   :todo/name "Matt's List",
-   :todo/numbers [12 20 443],
-   :category/_todo
-   [{:db/id 3, :category/name "At Home"}
-    {:db/id 4, :category/name "Work Stuff"}
-    {:db/id 5, :category/name "Hobby"}],
-   :todo/owner {:db/id 1, :person/age 14, :person/name "Matt"}}
-
-  (d/pull @conn '[{:todo/_owner ...}] 1)
-
-  (pa/pull-analyze dcfg [:patterns]
-                   {:db @conn
-                    :conn-id :hux
-                    :schema (:schema @conn)}
-                   '[{:todo/_owner ...}] 1)
-  
-  (d/pull-many @conn '[:todo/name :todo/numbers {:category/_todo [:category/name]
-                                                 :todo/owner [*]}]
-               [2])
-
-  (d/pull-many @conn '[:task/name] [7 10 6 9 8])
-
-  (let
-      [an
-       (pa/pull-many-analyze d/pull d/q d/entid
-                             [:patterns :datoms]
-                             (:schema @conn)
-                             (d/db conn)
-                             '[:task/name :task/done {:task/category [*]}]
-                             [7 10 6 9 8])]
-    (pa/combine-entids #{} [#{:task/name :task/done} '_] (:patterns an) [] [])
-    (pa/reduce-patterns (:patterns an)))
-
-  (d/q '[:find [?t ...]
-         :in $
-         :where
-         [?t :task/name _]]
-       @conn)
-
-  
-  
-  )
-
 (def conn2 (d/create-conn))
 
 (d/transact! conn2 [{:db/id -1
@@ -181,195 +81,7 @@
                      :permission/level 10
                      :permission/uuid "bmmsmsdlfds"}])
 
-(comment
-
-  (d/q '[:find [?tname ...]
-         :in $ $perm ?level
-         :where
-         [?t :task/name ?tname]
-         [?t :permission/uuid ?uuid]
-         [$perm ?p :permission/uuid ?uuid]
-         [$perm ?p :permission/level ?level]]
-       @conn
-       @conn2
-       54)
-
-  (d/q '[:find ?tname (pull ?t [*]) ?uuid (pull ?p [*]) ?level
-         :in $ $perm ?level
-         :where
-         [?t :task/name ?tname]
-         [?t :permission/uuid ?uuid]
-         [$perm ?p :permission/uuid ?uuid]
-         [$perm ?p :permission/level ?level]]
-       @conn
-       @conn2
-       54)
-
-  (qa/replace-find-pulls '[?tname [(pull ?t [*]) ...] ?uuid (pull ?p [*]) ?level])
-
-  (qa/get-pull-var-pairs '[?tname [(pull ?t [*]) ...] ?uuid (pull ?p [*]) ?level])
-
-  (qa/match-vars-to-dbs '[?t ?c] {'$ {:conn conn :db @conn :schema (:schema @conn)}}
-                        '[[$ ?t :task/name ?n]
-                          [$ ?t :task/category ?c]])
-
-
-  (d/q '[:find ?tname ?t ?uuid ?p ?level
-         :in $ $perm ?level
-         :where
-         [?t :task/name ?tname]
-         [?t :permission/uuid ?uuid]
-         [$perm ?p :permission/uuid ?uuid]
-         [$perm ?p :permission/level ?level]]
-       @conn
-       @conn2
-       54)
-
-  (qa/q-analyze {:q d/q}
-                [:results :datoms :patterns]
-                '[:find ?tname ?t ?uuid ?p ?level
-                  :in $ $perm ?level
-                  :where
-                  [?t :task/name ?tname]
-                  [?t :permission/uuid ?uuid]
-                  [$perm ?p :permission/uuid ?uuid]
-                  [$perm ?p :permission/level ?level]]
-                {:conn :conn :db @conn
-                 :schema (:schema @conn)
-                 :key [:db :conn]}
-                {:conn :conn2 :db @conn2
-                 :schema (:schema @conn2)
-                 :key [:db :conn2]}
-                54)
-
-  (qa/q-analyze-with-pulls {:q d/q}
-                [:pulls]
-                '[:find (pull ?tname '[*]) ?t ?uuid ?p ?level
-                  :in $ $perm ?level
-                  :where
-                  [?t :task/name ?tname]
-                  [?t :permission/uuid ?uuid]
-                  [$perm ?p :permission/uuid ?uuid]
-                  [$perm ?p :permission/level ?level]]
-                {:conn conn :db @conn :schema (:schema @conn)}
-                {:conn conn2 :db @conn2 :schema (:schema @conn2)}
-                54)
-
-  (dm/reduce-patterns (map (fn [x] [x :person/name "zandy"]) (range 100)))
-
-  (d/q '[:find ?p
-         :in $ ?g
-         :where
-         [?p :task/category _]]
-       @conn 2)
-
-  (d/q '{:find [(min ?a) (max ?a) ?b]
-         :in [[[?a ?b] ...]]}
-       [[1 2] [3 4] [4 5]])
-
-  '{:find  [?tname ?t ?uuid ?p ?level]
-    :in    [$ $perm ?level]
-    :where [[?t :task/name ?tname]
-            [?t :permission/uuid ?uuid]
-            [$perm ?p :permission/uuid ?uuid]
-            [$perm ?p :permission/level ?level]]}
-
-  (qa/get-eavs
-   (qa/normalize-all-eavs '[[?t :task/name ?tname]
-                            [?t :permission/uuid ?uuid]
-                            [$perm ?p :permission/uuid ?uuid]
-                            [$perm ?p :permission/level ?level]]))
-
-  (qa/normalize-all-eavs '[[?t :task/name ?tname]
-                           [?t :permission/uuid ?uuid]
-                           [$perm ?p :permission/uuid ?uuid]
-                           [$perm ?p :permission/level ?level]])
-
-  (:rschema @conn)
-
-  )
-
-
-(comment
-
-  (qa/get-input-sets )
-  
-  (qa/q-analyze dcfg
-                [:results :datoms :patterns]
-                '[:find ?task ?task-name ?list-name
-                  :in $ ?true [?owner-name ...]
-                  :where
-                  [?p :person/name ?owner-name]
-                  [?todo :todo/owner ?p]
-                  [?todo :todo/name ?list-name]
-                  [?cat  :category/todo ?todo]
-                  [?task :task/category ?cat]
-                  [?task :task/done ?true]
-                  [?task :task/name ?task-name]]
-                {:conn conn
-                 :db   @conn
-                 :schema (:schema @conn)
-                 :key :hux}
-                true ["Matt" "Jim"])
-
-  (qa/q-analyze dcfg
-                [:patterns]
-                '[:find ?t ?d ?p
-                  :where
-                  [?t :task/name _]]
-                {:conn conn
-                 :db   @conn
-                 :schema (:schema @conn)
-                 :key :hux})
-
-  (qa/pattern-from-eav
-   '{?v
-     #{"Mop Floors" "Compose opera" "Draw a picture of a cat"
-       "stock market library" "Clean Dishes"},
-     ?a #{:person/name :task/name}
-     ?e #{7 6 9 10 8}}
-   '[_ :jim _])
-
-  
-  (qa/patterns-from-eavs
-   {'$ {:conn conn :db @conn :key :hux :schema (:schema @conn)}}
-   '{?var3284833
-     #{"Mop Floors" "Compose opera" "Draw a picture of a cat"
-       "stock market library" "Clean Dishes"},
-     ?t #{7 6 9 10 8}}
-   '([$ _ :task/name _]))
-
-
-  (d/q '[:find ?p ?d ?j
-         :in [[?p ?d] ...] ?j]
-       [[1 2] [3 4]]
-       :hey)
-
-  (qa/q-analyze d/q
-                [:results :datoms :patterns]
-                '[:find ?task ?task-name ?list-name
-                  :in $ ?true ?owner-name
-                  :where
-                  [?p :person/name ?owner-name]
-                  [?todo :todo/owner ?p]
-                  [?todo :todo/name ?list-name]
-                  [?cat  :category/todo ?todo]
-                  [?task :task/category ?cat]
-                  [?task :task/done ?true]
-                  [?task :task/name ?task-name]]
-                @conn true "Matt")
-
-  (def conn2 (d/create-conn schema))
-  (d/transact! conn2 qd)
-
-  ;; filter db
-  
-  )
-
-
-
-
-;;; posh tree testing :::
+;;; ============== posh tree testing ==================
 
 (def dcfg
   {:db d/db
@@ -378,46 +90,10 @@
    :filter d/filter
    :entid d/entid})
 
-(def cache
-  {[:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]]
-   {:filter-pred (fn [_ datom]
-                   (dm/datom-match? '[[_ #{:task/name :person/name :category/name}]]
-                                    datom))}})
-
-(def poshdb2
-  [:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]])
-
-(def poshdb1 [:db conn])
-
-(def tree1
-  {[:db] {[:pull [:db conn] '[*] 3] :query
-          [:pull [:db conn] '[:task/name] 10] :query
-
-          [:filter-tx '[[_ #{:task/name :person/name :category/name}]]]
-          {[:pull [:filter-tx '[[_ :task/name]]] '[*] 12] :query}}})
-
-
-(def poshtree
-  {:tree tree1
-   :cache cache
-   :dcfg dcfg
-   :conn conn
-   :schema (:schema @conn)})
-
-(def emptytree
-  {:tree {}
-   :cache {}
-   :graph {}
-   :dcfg dcfg
-   :retrieve [:patterns :datoms :results]
-   :conns {}
-   :schemas {}
-   :dbs {}})
-
+;; with just one DB named :hux
 (def smalltree
-  (-> emptytree
-      (pt/add-conn :hux conn (:schema @conn))
-      (pt/set-db :hux @conn)
+  (-> (pt/empty-tree dcfg [:results :datoms])
+      (pt/add-db :hux conn (:schema @conn) @conn)
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-q '[:find ?e
                   :in $
@@ -426,41 +102,11 @@
                 [:db :hux])
       (pt/add-pull [:db :hux] '[:category/name] 3)))
 
-(u/update-q-with-dbvarmap
- smalltree
- [:q '[:find ?e
-       :in $
-       :where
-       [?e :category/name _]]
-  '([:db :hux])])
-
-;;; PROBLEM IS THAT add-q IS NOT ADDING Q TO TREE, OK
-
-(comment
-  (pt/add-filter-q '[:find ?e ?a
-                     :in $ ?user
-                     :where
-                     [?user :user/role ?role]
-                     [?e :security/access ?role]
-                     [?e ?a ?role]]
-                   [:db :hux]
-                   45)
-
-  '{?role :admin
-    ?e #{34 5 28 3483 20}}
-  
-  '[[45 :user/role _]
-    [#{34 5 28 3483 20} :security/access _]
-    [_ :security/access :admin]
-    []]
-
-  )
-
+;; with second permissions DB named :perm
 (def fulltree
-  (-> emptytree
-      (pt/add-conn conn (:schema @conn) :hux)
-      (pt/add-conn conn2 (:schema @conn2) :perm)
-      (pt/set-db :hux @conn)
+  (-> (pt/empty-tree dcfg [:results])
+      (pt/add-db :hux conn (:schema @conn) @conn)
+      (pt/add-db :perm conn2 (:schema @conn2) @conn2)
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
       (pt/add-filter-pull
@@ -485,36 +131,20 @@
                 [:db :perm]
                 54)))
 
-(:graph fulltree)
-
-(get (:cache fulltree)
-     '[:filter-pull
-       [:db :hux]
-       [{:todo/_owner [{:category/_todo [:category/name]}]}]
-       1])
-
-
-(def db @conn2)
-
-(d/transact! conn2 '[[:db/add 4 :permission/level 55]])
-
-(db/poshdb->db
- fulltree
- '[:filter-pull [:db :hux]
-                 [{:todo/_owner [{:category/_todo [:category/name]}]}] 1])
+(u/update-filter-q fulltree
+                   [:q
+                    '[:find ?t
+                      :in $ $perm ?level
+                      :where
+                      [?t :task/name ?tname]
+                      [?t :permission/uuid ?uuid]
+                      [$perm ?p :permission/uuid ?uuid]
+                      [$perm ?p :permission/level ?level]]
+                    [[:db :hux]
+                     [:db :perm]
+                     54]])
 
 (comment
-
-  (pt/needs-update (get (:tree fulltree) [:db :hux])
-                   (:cache fulltree)
-                   [[3 :category/name "jim"]])
-
-  (pt/update-cache
-   fulltree
-   (get (:tree fulltree) [:db :hux])
-   (:cache fulltree)
-   [[3 :category/name "jim"]])
-
 
   (pt/cache-changes
    smalltree
@@ -523,54 +153,84 @@
    {}
    [:db :hux])
 
-  (:graph smalltree)
-  (keys (:graph smalltree))
-
-  (pt/cache-updates-for-conn-id
-   smalltree
-   (get (:tree smalltree) [:db :hux])
-   {}
+  (pt/cache-changes
+   fulltree
    :hux
-   [[3 :category/name "jim"]])
-
-  (u/update-q smalltree '[:q [:find ?e :in $ :where [?e :category/name _]] ([:db :hux])])
-
-  (u/update-posh-item smalltree
-                      '[:q [:find ?e :in $ :where [?e :category/name _]] ([:db :hux])])
-
-  (pt/cache-updates fulltree
-                    {}
-                    {}
-                    [[3 :category/name "jim"]])
-
-  (get (keys (:tree fulltree))
-       '[:pull [:filter-pull [:db :hux]
-                [{:todo/_owner
-                  [{:category/_todo [:category/name]}]}] 1] [*] 3])
-
-
-  
-  [{:keys [tree cache dcfg schema conn] :as posh-tree} retrieve poshdb pull-pattern eid]
-  (:cache (pt/add-pull poshtree [:results :datoms-t] poshdb2 '[*] 4))
-
-  (def pt11
-    (pt/add-filter-tx pt1 [:db] '[[_ #{:task/name :person/name :category/name}]]))
-
-  (pt/add-filter-tx pt2 [:filter-tx [:db] '[[_ #{:task/name :person/name :category/name}]]]
-                    '[[#{1, 2, 3}]])
-
-  (pt/get-conn
-   [:filter-tx [:db conn] '[[_ #{:task/name :person/name :category/name}]]])
-
-  (count
-   (pt/poshdb->db dcfg cache poshdb1))
-
-  (count
-   (pt/poshdb->db dcfg cache poshdb2))
-
+   [[3 :category/name "jim"]]
+   {}
+   [:db :hux])
 
   )
 
 
 
 
+;;; ========= q-analyze testing ==========
+
+(comment
+
+  (def r  (d/q '[:find ?t ?c ?o
+                 :in $
+                 :where
+                 [?t :task/name _]
+                 [?c :category/name _]
+                 [?o :todo/name _]]
+               @conn))
+
+  r
+
+  (defn reduce-entity-set [r]
+    (reduce (fn [acc xs] (reduce (fn [acc x] (conj acc x)) acc xs)) #{} r))
+
+  (qa/q-analyze {:q d/q}
+                [:results :datoms :patterns]
+                '[:find ?tname ?t ?uuid ?p ?level
+                  :in $ $perm ?level
+                  :where
+                  [?t :task/name ?tname]
+                  [?t :permission/uuid ?uuid]
+                  [$perm ?p :permission/uuid ?uuid]
+                  [$perm ?p :permission/level ?level]]
+                [{:conn :conn :db @conn
+                  :db-id :hux
+                  :schema (:schema @conn)
+                  :key [:db :conn]}
+                 {:conn :conn2 :db @conn2
+                  :db-id :perm
+                  :schema (:schema @conn2)
+                  :key [:db :conn2]}
+                 54])
+
+;;; not working yet... 
+  (qa/q-analyze-with-pulls {:q d/q}
+                           [:pulls]
+                           '[:find (pull ?tname '[*]) ?t ?uuid ?p ?level
+                             :in $ $perm ?level
+                             :where
+                             [?t :task/name ?tname]
+                             [?t :permission/uuid ?uuid]
+                             [$perm ?p :permission/uuid ?uuid]
+                             [$perm ?p :permission/level ?level]]
+                           {:conn conn :db @conn :schema (:schema @conn)}
+                           {:conn conn2 :db @conn2 :schema (:schema @conn2)}
+                           54)
+
+  (qa/q-analyze dcfg
+                [:results :datoms :patterns]
+                '[:find ?task ?task-name ?list-name
+                  :in $ ?true [?owner-name ...]
+                  :where
+                  [?p :person/name ?owner-name]
+                  [?todo :todo/owner ?p]
+                  [?todo :todo/name ?list-name]
+                  [?cat  :category/todo ?todo]
+                  [?task :task/category ?cat]
+                  [?task :task/done ?true]
+                  [?task :task/name ?task-name]]
+                [{:conn conn
+                  :db   @conn
+                  :db-id :hux
+                  :schema (:schema @conn)
+                  :key :hux}
+                 true ["Matt" "Jim"]])
+  )

@@ -198,8 +198,8 @@
 ;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
-;; db should be {:db db :schema schema :conn-id conn-id}
-(defn pull-analyze [dcfg retrieve {:keys [db conn-id schema]} pull-pattern ent-id]
+;; db should be {:db db :schema schema :db-id db-id}
+(defn pull-analyze [dcfg retrieve {:keys [db db-id schema]} pull-pattern ent-id]
   (when-not (empty? retrieve)
     (let [affected-datoms
           (pull-affected-datoms (:pull dcfg) db pull-pattern ((:entid dcfg) db ent-id))]
@@ -210,15 +210,15 @@
          (let [datoms (generate-affected-tx-datoms-for-pull schema affected-datoms)]
            (merge
             (when (some #{:datoms} retrieve)
-              {:datoms {conn-id datoms}})
+              {:datoms {db-id datoms}})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t {conn-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
+              {:datoms-t {db-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
        (when (some #{:patterns :ref-patterns} retrieve)
          (let [prepped-pull-pattern (insert-dbid (remove-limits pull-pattern))]
            (merge
             (when (some #{:patterns} retrieve)
               {:patterns
-               {conn-id
+               {db-id
                 (dm/reduce-patterns
                  (tx-pattern-for-pull
                   schema
@@ -226,14 +226,14 @@
                   affected-datoms))}})
             (when (some #{:ref-patterns} retrieve)
               {:ref-patterns
-               {conn-id
+               {db-id
                 (dm/reduce-patterns
-                 (tx-reload-pattern-for-pull
+                 (tx-ref-pattern-for-pull
                   schema
                   prepped-pull-pattern
                   affected-datoms))}}))))))))
  
-(defn pull-many-analyze [dcfg retrieve {:keys [db schema conn-id]} pull-pattern ent-ids]
+(defn pull-many-analyze [dcfg retrieve {:keys [db schema db-id]} pull-pattern ent-ids]
   (when-not (empty? retrieve)
     (let [resolved-ent-ids (map #((:entid dcfg) db %) ent-ids)
           affected-datoms
@@ -247,12 +247,12 @@
                            affected-datoms)]
            (merge
             (when (some #{:datoms} retrieve)
-              {:datoms {conn-id datoms}})
+              {:datoms {db-id datoms}})
             (when (some #{:datoms-t} retrieve)
-              {:datoms-t {conn-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
+              {:datoms-t {db-id (util/t-for-datoms (:q dcfg) db datoms)}}))))
        (when (some #{:patterns} retrieve)
          {:patterns
-          {conn-id
+          {db-id
            (let [patterns
                  (map
                   #(tx-pattern-for-pull

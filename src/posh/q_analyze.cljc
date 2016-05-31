@@ -254,13 +254,13 @@
 (defn patterns-from-eavs [dbvarmap vars patterns]
   (->> (group-by first patterns)
        (map (fn [[k v]]
-              {(:conn-id (dbvarmap k)) (mapcat #(pattern-from-eav vars (rest %)) v)}))
+              {(:db-id (dbvarmap k)) (mapcat #(pattern-from-eav vars (rest %)) v)}))
        (apply merge)))
 
 (defn filter-patterns-from-eavs [dbvarmap vars patterns]
   (->> (group-by first patterns)
        (map (fn [[k v]]
-              {(:conn-id (dbvarmap k)) (mapcat #(filter-pattern-from-eav vars (rest %)) v)}))
+              {(:db-id (dbvarmap k)) (mapcat #(filter-pattern-from-eav vars (rest %)) v)}))
        (apply merge)))
 
 (defn just-qvars [ins args]
@@ -448,7 +448,7 @@
             {:datoms
              (->> datoms
                   (map (fn [[db-sym db-datoms]]
-                         {(:conn-id (dbvarmap db-sym))
+                         {(:db-id (dbvarmap db-sym))
                           db-datoms}))
                   (apply merge))})
           (when (some #{:datoms-t} retrieve)
@@ -456,7 +456,7 @@
              (->> datoms
                   (map (fn [[db-sym db-datoms]]
                          (let [db (dbvarmap db-sym)]
-                           {(:conn-id db)
+                           {(:db-id db)
                             (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
                   (apply merge))}))))
      (when (some #{:results} retrieve)
