@@ -9,6 +9,23 @@
             [posh.tree.graph :as graph]
             [clojure.core.match :refer [match]]))
 
+;; cache - {storage-key {analysis-info...}} stores info about components
+;; graph - {storage-key {:outputs [keys...] :inputs [keys ...]}}
+;;         used to pass tx around tree
+;; dcfg - map of datascript/datomic functions
+;; retrieve - vector of what you want from the queries
+;;            :results - query results
+;;            :datoms  - datoms needed in empty db to get the same results
+;;            :datoms-t - ditto but with transaction t for each datom
+;; conns - {db-id conn ...}
+;; schemas - {db-id schema ..}
+;; txs - {conn tx ...} stores any txs waiting to really transact!
+;; filter-preds - {db-id filter-pred-symbol}
+;;                resolves filter-pred-symbol to make base db filter
+;; dbs - {db-id db ...} these get updated every process-tx! and are built
+;;       using filter-preds if they are there
+
+
 (defn empty-tree [{:keys [q pull filter entid db] :as dcfg} retrieve]
   {:cache {}
    :graph {}
@@ -16,6 +33,8 @@
    :retrieve retrieve
    :conns {}
    :schemas {}
+   :txs {}
+   :filter-preds {}
    :dbs {}})
 
 (defn add-db [{:keys [conns schemas dbs cache graph] :as posh-tree} db-id conn schema db]
@@ -24,6 +43,7 @@
      posh-tree
      {:conns (assoc conns db-id conn)
       :schemas (assoc schemas db-id schema)
+      :return storage-key
       :dbs (assoc dbs db-id db)
       :cache (merge cache {storage-key {:pass-patterns [[]]}})
       :graph (graph/add-item-full graph storage-key [] [])})))
@@ -35,6 +55,8 @@
      {:dbs (assoc dbs db-id db)
       :cache (merge cache {storage-key {:pass-patterns [[]]}})
       :graph (graph/add-item-full graph storage-key [] [])})))
+
+(defn set-filter-pred)
 
 (defn add-filter-tx [{:keys [cache graph] :as posh-tree} poshdb tx-patterns]
   (let [storage-key   [:filter-tx poshdb tx-patterns]
@@ -135,4 +157,42 @@
                {storage-key reloaded})
              {}))))
 
+
+;; ======================= transact ======================
+
+
+;; we store the new transactions in the posh-tree under the db-id.
+;; when it comes time to actually transact, we group them by conn,
+;; transact! them to the conns, then run them through the tree.
+
+;; add-tx just stores them in the tree; process-tx! actually does the deed
+
+;; later this should reconcile duplicates, break apart maps, etc.
+(defn merge-txs [oldtx newtx]
+  (concat newtx oldtx))
+
+(defn add-tx [{:keys [txs conns] :as posh-tree} poshdb tx]
+  (let [conn (get conns (db/poshdb->db-id poshdb))]
+    (assoc posh-tree :txs
+           (assoc txs conn
+                  (merge-txs (get txs conn) tx)))))
+
+(defn group-db-ids-by-conn [conns]
+  (reduce-kv
+   (fn [m k v] (assoc m k (map first v)))
+   {}
+   (group-by second conns)))
+
+(defn process-tx! [{:keys [txs conns dcfg] :as posh-tree}]
+  (let [transact-results       (map (fn [conn tx]
+                                      {:conn conn
+                                       :results ((:transact! dcfg) conn tx)}) txs)
+        db-ids-by-conn         (group-db-ids-by-conn conns)
+        posh-tree-with-new-dbs (reduce (fn [new-posh-tree
+                                           {:keys [results conn]}]
+                                         ))]
+
+
+    )
+  )
 

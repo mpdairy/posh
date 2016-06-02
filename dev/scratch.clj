@@ -7,7 +7,8 @@
             [posh.tree.core :as pt]
             [posh.tree.db :as db]
             [clojure.core.match :refer [match]]
-            [posh.tree.update :as u]))
+            [posh.tree.update :as u]
+            [posh.core :as p]))
 
 (def schema {:todo/name             {:db/unique :db.unique/identity}
              :todo/owner            {:db/valueType :db.type/ref
@@ -88,7 +89,8 @@
    :pull d/pull
    :q d/q
    :filter d/filter
-   :entid d/entid})
+   :entid d/entid
+   :transact! d/transact!})
 
 ;; with just one DB named :hux
 (def smalltree
@@ -160,6 +162,9 @@
    {}
    [:db :hux])
 
+  (-> fulltree
+      (pt/add-tx [:db :hux] [[:db/add 34 :person/name "jimmy who"]])
+      (pt/add-tx [:db :hux] [[:db/add 3 :category/name "angel face"]]))
   )
 
 
@@ -234,3 +239,13 @@
                   :key :hux}
                  true ["Matt" "Jim"]])
   )
+
+(comment
+  (def poshtree (p/new-posh dcfg [:results]))
+
+;;; UUUUH Oh, got to remember to update the db whenever there are
+;;; changes.
+  (def db
+    (p/db poshtree 'hux conn (:schema @conn) @conn))
+
+  (p/add-pull db '[*] 3))
