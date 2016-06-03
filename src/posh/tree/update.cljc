@@ -7,7 +7,7 @@
             [posh.tree.db :as db]))
 
 (defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
-  ;;(println "updated pull: " storage-key)
+  (println "updated pull: " storage-key)
   (let [[_ poshdb pull-pattern eid] storage-key]
     (let [analysis (pa/pull-analyze dcfg
                                     (cons :patterns retrieve)
@@ -21,7 +21,7 @@
        :patterns))))
 
 (defn update-filter-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
-  ;;(println "updated filter-pull: " storage-key)
+  (println "updated filter-pull: " storage-key)
   (let [[_ poshdb pull-pattern eid] storage-key]
     (let [analysis (pa/pull-analyze dcfg
                                     (concat [:patterns :ref-patterns] retrieve)
@@ -57,7 +57,7 @@
                          :reload-fn 'posh.tree.update/update-q}))}))
 
 (defn update-q [posh-tree storage-key]
-  ;;(println "updated q: " storage-key)
+  (println "updated q: " storage-key)
   (:analysis (update-q-with-dbvarmap posh-tree storage-key)))
 
 (defn reduce-entities [r]

@@ -20,10 +20,9 @@
 ;; conns - {db-id conn ...}
 ;; schemas - {db-id schema ..}
 ;; txs - {conn tx ...} stores any txs waiting to really transact!
-;; filter-preds - {db-id filter-pred-symbol}
-;;                resolves filter-pred-symbol to make base db filter
 ;; dbs - {db-id db ...} these get updated every process-tx! and are built
 ;;       using filter-preds if they are there
+;; filter, as-of, with, since get added to db
 
 
 (defn empty-tree [{:keys [q pull filter entid db] :as dcfg} retrieve]
@@ -34,29 +33,35 @@
    :conns {}
    :schemas {}
    :txs {}
-   :filter-preds {}
-   :dbs {}})
+   :dbs {}
+   :filters {}
+   ;; {db-id {:filter pred :as-of t :with tx-data :since t}}
+   })
 
-(defn add-db [{:keys [conns schemas dbs cache graph] :as posh-tree} db-id conn schema db]
-  (let [storage-key [:db db-id]]
-    (merge
-     posh-tree
-     {:conns (assoc conns db-id conn)
-      :schemas (assoc schemas db-id schema)
-      :return storage-key
-      :dbs (assoc dbs db-id db)
-      :cache (merge cache {storage-key {:pass-patterns [[]]}})
-      :graph (graph/add-item-full graph storage-key [] [])})))
+(defn add-db
+  ([posh-tree db-id conn schema] (add-db posh-tree db-id conn schema nil))
+  ([{:keys [dcfg conns schemas dbs cache graph] :as posh-tree}
+    db-id conn schema base-filters]
+     (let [storage-key [:db db-id]]
+       (merge
+        posh-tree
+        {:conns (assoc conns db-id conn)
+         :schemas (assoc schemas db-id schema)
+         :filters (assoc (:filters posh-tree) db-id base-filters)
+         :return storage-key
+         :dbs (assoc dbs db-id (db/generate-initial-db dcfg conn base-filters))
+         :cache (merge cache {storage-key {:pass-patterns [[]]}})
+         :graph (graph/add-item-full graph storage-key [] [])}))))
 
-(defn set-db [{:keys [dbs graph cache] :as posh-tree} db-id db]
-  (let [storage-key [:db db-id]]
-    (merge
-     posh-tree
-     {:dbs (assoc dbs db-id db)
-      :cache (merge cache {storage-key {:pass-patterns [[]]}})
-      :graph (graph/add-item-full graph storage-key [] [])})))
-
-(defn set-filter-pred)
+(defn set-db
+  ([posh-tree db-id db] (set-db posh-tree db-id db nil))
+  ([{:keys [dbs graph cache] :as posh-tree} db-id db filter-pred]
+     (let [storage-key [:db db-id]]
+       (merge
+        posh-tree
+        {:dbs (assoc dbs db-id db)
+         :cache (merge cache {storage-key {:pass-patterns [[]]}})
+         :graph (graph/add-item-full graph storage-key [] [])}))))
 
 (defn add-filter-tx [{:keys [cache graph] :as posh-tree} poshdb tx-patterns]
   (let [storage-key   [:filter-tx poshdb tx-patterns]
@@ -183,16 +188,38 @@
    {}
    (group-by second conns)))
 
-(defn process-tx! [{:keys [txs conns dcfg] :as posh-tree}]
-  (let [transact-results       (map (fn [conn tx]
-                                      {:conn conn
-                                       :results ((:transact! dcfg) conn tx)}) txs)
-        db-ids-by-conn         (group-db-ids-by-conn conns)
-        posh-tree-with-new-dbs (reduce (fn [new-posh-tree
-                                           {:keys [results conn]}]
-                                         ))]
+
+(defn process-tx! [{:keys [txs conns dcfg dbs filters cache] :as posh-tree}]
+  (let [conns-results (reduce-kv (fn [m conn tx]
+                                   (assoc m conn
+                                          ((:transact! dcfg) conn tx)))
+                                 {}
+                                 txs)
+        new-dbs       (apply merge
+                             (for [[db-id conn] conns]
+                               (if (get conns-results conn)
+                                 {db-id (db/generate-initial-db
+                                         dcfg conn (get filters db-id)
+                                         (:db-after (get conns-results conn)))}
+                                 {db-id (get dbs db-id)})))
+        new-posh-tree (assoc posh-tree :dbs new-dbs)
+        changed-cache (reduce (fn [changed [db-id conn]]
+                                (merge
+                                 changed
+                                 (cache-changes new-posh-tree
+                                                db-id
+                                                (:tx-data (get conns-results conn))
+                                                changed
+                                                [:db db-id])))
+                              {} conns)
+        really-changed (reduce-kv (fn [m k v]
+                                    (if (not= v (get cache k))
+                                      (assoc m k v)
+                                      m))
+                                  {} changed-cache)]
+    (merge new-posh-tree
+           {:cache (merge cache really-changed)
+            :changed really-changed})))
 
 
-    )
-  )
 

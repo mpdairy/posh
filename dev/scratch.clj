@@ -89,13 +89,14 @@
    :pull d/pull
    :q d/q
    :filter d/filter
+   :with d/with
    :entid d/entid
    :transact! d/transact!})
 
 ;; with just one DB named :hux
 (def smalltree
   (-> (pt/empty-tree dcfg [:results :datoms])
-      (pt/add-db :hux conn (:schema @conn) @conn)
+      (pt/add-db :hux conn (:schema @conn))
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-q '[:find ?e
                   :in $
@@ -104,11 +105,14 @@
                 [:db :hux])
       (pt/add-pull [:db :hux] '[:category/name] 3)))
 
+(defn no-task-names-filter [_ datom] (not= (second datom) :task/name))
+
 ;; with second permissions DB named :perm
 (def fulltree
   (-> (pt/empty-tree dcfg [:results])
-      (pt/add-db :hux conn (:schema @conn) @conn)
-      (pt/add-db :perm conn2 (:schema @conn2) @conn2)
+      (pt/add-db :hux conn (:schema @conn))
+      (pt/add-db :perm conn2 (:schema @conn2))
+      (pt/add-db :tasks conn (:schema @conn) {:filter 'scratch/no-task-names-filter})
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
       (pt/add-filter-pull
@@ -162,9 +166,16 @@
    {}
    [:db :hux])
 
-  (-> fulltree
-      (pt/add-tx [:db :hux] [[:db/add 34 :person/name "jimmy who"]])
-      (pt/add-tx [:db :hux] [[:db/add 3 :category/name "angel face"]]))
+  (def newtree
+    (-> fulltree
+        (pt/add-tx [:db :hux] [[:db/add 34 :person/name "jimmy who"]])
+        (pt/add-tx [:db :hux] [[:db/add 3 :category/name "angel face"]])
+        (pt/add-tx [:db :perm] [[:db/add 3 :permission/level 18]])
+        (pt/process-tx!)))
+
+  (:tx-data (d/transact! conn [[:db/add -1 :person/homes "jimmdf"]]))
+
+  (:changed newtree)
   )
 
 
@@ -243,6 +254,15 @@
 (comment
   (def poshtree (p/new-posh dcfg [:results]))
 
+  
+  (db/generate-initial-db
+   {:dcfg dcfg
+    :filters {:hux {:filter 'scratch/nevertrue
+                    :with [[:db/add 18 :best/person "Matt!"]]}}
+    :conns {:hux conn}}
+   :hux)
+
+  (d/with @conn [[:db/add 18 :best/person "Matt!"]])
 ;;; UUUUH Oh, got to remember to update the db whenever there are
 ;;; changes.
   (def db

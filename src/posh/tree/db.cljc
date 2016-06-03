@@ -44,6 +44,23 @@
   (fn [_ datom]
     (dm/datom-match? tx-patterns datom)))
 
+(defn generate-initial-db
+  ([dcfg conn filters] (generate-initial-db dcfg conn filters nil))
+  ([dcfg conn filters db]
+     (let [{:keys [filter as-of since with]} filters
+           ;; generate db (order matters, or I would use reduce)
+           db (or db ((:db dcfg) conn)) ;; create initial db
+           db (if since ((:since dcfg) db since) db)  ;; since t
+           db (if as-of ((:as-of dcfg) db as-of) db)  ;; as-of t
+           db (if with (:db-after ((:with dcfg) db with)) db)  ;; with tx-data
+           db (if filter
+                ((:filter dcfg) db (if (symbol? filter)
+                                     (resolve filter)
+                                     filter))
+                db) ;; filter pred-sym
+           ]
+       db)))
+
 (defn poshdb->db [{:keys [dcfg cache] :as posh-tree}  poshdb]
   (if (= (first poshdb) :db)
     (db-id->db posh-tree (second poshdb))
