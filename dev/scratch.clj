@@ -10,6 +10,9 @@
             [posh.tree.update :as u]
             [posh.core :as p]))
 
+
+;; ============= setting up the test databases ============
+
 (def schema {:todo/name             {:db/unique :db.unique/identity}
              :todo/owner            {:db/valueType :db.type/ref
                                      :db/cardinality :db.cardinality/one}
@@ -84,6 +87,9 @@
 
 ;;; ============== posh tree testing ==================
 
+;;; dcfg is the database config. You have to supply all these
+;;; functions to it. Hopefully, if you just switch it to datomic
+;;; functions, everything in posh will still work.
 (def dcfg
   {:db d/db
    :pull d/pull
@@ -93,7 +99,7 @@
    :entid d/entid
    :transact! d/transact!})
 
-;; with just one DB named :hux
+;; a small posh tree with just one DB named :hux
 (def smalltree
   (-> (pt/empty-tree dcfg [:results :datoms])
       (pt/add-db :hux conn (:schema @conn))
@@ -105,14 +111,21 @@
                 [:db :hux])
       (pt/add-pull [:db :hux] '[:category/name] 3)))
 
+
+
+;; a bigger tree with a second, permissions DB named :perm
+;; and a filtered db named :tasks
+
 (defn no-task-names-filter [_ datom] (not= (second datom) :task/name))
 
-;; with second permissions DB named :perm
 (def fulltree
   (-> (pt/empty-tree dcfg [:results])
       (pt/add-db :hux conn (:schema @conn))
       (pt/add-db :perm conn2 (:schema @conn2))
+
+      ;; same db as :hux but without any :task/name datoms
       (pt/add-db :tasks conn (:schema @conn) {:filter 'scratch/no-task-names-filter})
+      
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
       (pt/add-filter-pull
@@ -137,34 +150,9 @@
                 [:db :perm]
                 54)))
 
-(u/update-filter-q fulltree
-                   [:q
-                    '[:find ?t
-                      :in $ $perm ?level
-                      :where
-                      [?t :task/name ?tname]
-                      [?t :permission/uuid ?uuid]
-                      [$perm ?p :permission/uuid ?uuid]
-                      [$perm ?p :permission/level ?level]]
-                    [[:db :hux]
-                     [:db :perm]
-                     54]])
 
+;; =========== testing adding tx to poshtree to see what changes =====
 (comment
-
-  (pt/cache-changes
-   smalltree
-   :hux
-   [[3 :category/name "jim"]]
-   {}
-   [:db :hux])
-
-  (pt/cache-changes
-   fulltree
-   :hux
-   [[3 :category/name "jim"]]
-   {}
-   [:db :hux])
 
   (def newtree
     (-> fulltree
@@ -173,30 +161,22 @@
         (pt/add-tx [:db :perm] [[:db/add 3 :permission/level 18]])
         (pt/process-tx!)))
 
-  (:tx-data (d/transact! conn [[:db/add -1 :person/homes "jimmdf"]]))
-
   (:changed newtree)
+  (:cache newtree)
   )
 
 
 
 
+
+
+
+
+
 ;;; ========= q-analyze testing ==========
-
+;; still have to maybe add pull-in-find support for the eternal list
+;; of commands you can sneak into q.
 (comment
-
-  (def r  (d/q '[:find ?t ?c ?o
-                 :in $
-                 :where
-                 [?t :task/name _]
-                 [?c :category/name _]
-                 [?o :todo/name _]]
-               @conn))
-
-  r
-
-  (defn reduce-entity-set [r]
-    (reduce (fn [acc xs] (reduce (fn [acc x] (conj acc x)) acc xs)) #{} r))
 
   (qa/q-analyze {:q d/q}
                 [:results :datoms :patterns]
@@ -251,21 +231,11 @@
                  true ["Matt" "Jim"]])
   )
 
+
+
+;;;; ======== testing convenient stateful posh ======
+;;; still brainstorming about what features it should have...
 (comment
   (def poshtree (p/new-posh dcfg [:results]))
-
-  
-  (db/generate-initial-db
-   {:dcfg dcfg
-    :filters {:hux {:filter 'scratch/nevertrue
-                    :with [[:db/add 18 :best/person "Matt!"]]}}
-    :conns {:hux conn}}
-   :hux)
-
-  (d/with @conn [[:db/add 18 :best/person "Matt!"]])
-;;; UUUUH Oh, got to remember to update the db whenever there are
-;;; changes.
-  (def db
-    (p/db poshtree 'hux conn (:schema @conn) @conn))
 
   (p/add-pull db '[*] 3))
