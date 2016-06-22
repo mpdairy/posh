@@ -1,4 +1,5 @@
-(ns posh.datom-matcher)
+(ns posh.lib.datom-matcher
+  (:require [clojure.set :as cs]))
 
 (defn datom-match-pattern? [pattern datom]
   (if (empty? pattern)
@@ -32,15 +33,15 @@
     {:new-patterns (cons (vec (cons entids rest-datom)) new-patterns)
      :leftover-patterns leftover-patterns}
     (if (= rest-datom (rest (first patterns)))
-      (recur (clojure.set/union entids (if (set? (ffirst patterns))
-                                         (ffirst patterns)
-                                         (set [(ffirst patterns)])))
-                      rest-datom
-                      (rest patterns)
-                      new-patterns
-                      leftover-patterns)
+      (recur (cs/union entids (if (set? (ffirst patterns))
+                                (ffirst patterns)
+                                (set [(ffirst patterns)])))
+             rest-datom
+             (rest patterns)
+             new-patterns
+             leftover-patterns)
       (recur entids rest-datom (rest patterns) new-patterns
-                      (cons (first patterns) leftover-patterns)))))
+             (cons (first patterns) leftover-patterns)))))
 
 (defn reduce-patterns [patterns]
   (loop [new-patterns []

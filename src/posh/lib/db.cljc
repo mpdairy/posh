@@ -1,9 +1,5 @@
-(ns posh.tree.db
-  (:require [datascript.core :as d]
-            [posh.util :as util]
-            [posh.datom-matcher :as dm]
-            [posh.pull-analyze :as pa]
-            [posh.q-analyze :as qa]))
+(ns posh.lib.db
+  (:require [posh.lib.datom-matcher :as dm]))
 
 (defn get-parent-db [poshdb]
   (if (= (first poshdb) :db)

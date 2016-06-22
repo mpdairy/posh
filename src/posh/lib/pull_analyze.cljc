@@ -1,7 +1,6 @@
-(ns posh.pull-analyze
-  (:require [datascript.core :as d]
-            [posh.util :as util]
-            [posh.datom-matcher :as dm]))
+(ns posh.lib.pull-analyze
+  (:require [posh.lib.util :as util]
+            [posh.lib.datom-matcher :as dm]))
 
 (defn reverse-lookup? [attr]
   (= (first (name attr)) '\_))
@@ -89,10 +88,6 @@
 (defn generate-affected-tx-datoms-for-pull [schema affected-pull]
   (tx-datoms-for-pull-map schema (:db/id affected-pull) affected-pull))
 
-(comment (defn pull-datoms [db pull-pattern ent-id]
-           (generate-affected-tx-datoms-for-pull
-            db
-            (pull-affected-datoms db pull-pattern (d/entid db ent-id)))))
 
 ;;;;; pull pattern generator ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

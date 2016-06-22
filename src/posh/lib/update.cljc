@@ -1,10 +1,10 @@
-(ns posh.tree.update
+(ns posh.lib.update
   (:require [datascript.core :as d]
-            [posh.util :as util]
-            [posh.datom-matcher :as dm]
-            [posh.pull-analyze :as pa]
-            [posh.q-analyze :as qa]
-            [posh.tree.db :as db]))
+            [posh.lib.util :as util]
+            [posh.lib.datom-matcher :as dm]
+            [posh.lib.pull-analyze :as pa]
+            [posh.lib.q-analyze :as qa]
+            [posh.lib.db :as db]))
 
 (defn update-pull [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   (println "updated pull: " storage-key)

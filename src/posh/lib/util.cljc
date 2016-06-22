@@ -1,4 +1,4 @@
-(ns posh.util)
+(ns posh.lib.util)
 
 (defn exception [msg]
   #?(:clj

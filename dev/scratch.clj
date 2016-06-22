@@ -1,14 +1,14 @@
 (ns scratch
   (:require [datascript.core :as d]
-            [posh.q-analyze :as qa]
-            [posh.pull-analyze :as pa]
-            [posh.util :as util]
-            [posh.datom-matcher :as dm]
-            [posh.tree.core :as pt]
-            [posh.tree.db :as db]
+            [posh.lib.q-analyze :as qa]
+            [posh.lib.pull-analyze :as pa]
+            [posh.lib.util :as util]
+            [posh.lib.datom-matcher :as dm]
+            [posh.core :as pt]
+            [posh.lib.db :as db]
             [clojure.core.match :refer [match]]
-            [posh.tree.update :as u]
-            [posh.core :as p]))
+            [posh.lib.update :as u]
+            [posh.stateful :as p]))
 
 
 ;; ============= setting up the test databases ============
@@ -29,6 +29,8 @@
 
 (defn new-entity! [conn varmap]
   ((:tempids (d/transact! conn [(merge varmap {:db/id -1})])) -1))
+
+
 
 (defn populate! [conn]
   (let [matt       (new-entity! conn {:person/name "Matt" :person/age 14})
@@ -166,16 +168,6 @@
   )
 
 
-
-
-
-
-
-
-
-;;; ========= q-analyze testing ==========
-;; still have to maybe add pull-in-find support for the eternal list
-;; of commands you can sneak into q.
 (comment
 
   (qa/q-analyze {:q d/q}
@@ -229,6 +221,31 @@
                   :schema (:schema @conn)
                   :key :hux}
                  true ["Matt" "Jim"]])
+
+  (qa/q-analyze dcfg
+                [:patterns]
+                '[:find ?task
+                  :in $ ?todo
+                  :where
+                  [?cat :category/todo ?todo]
+                  [?task :task/category ?cat]]
+                [{:conn conn
+                  :db   @conn
+                  :db-id :hux
+                  :schema (:schema @conn)
+                  :key :hux}
+                 [:todo/name "Matt's List"]])
+
+  (d/q '[:find ?task ?todo
+         :in $ $2 ?todo
+         :where
+         [$2 ?cat :category/todo ?todo]
+         [$2 ?task :task/category ?cat]]
+       @conn2
+       @conn
+       [:todo/name "Matt's List"])
+
+
   )
 
 
@@ -236,6 +253,30 @@
 ;;;; ======== testing convenient stateful posh ======
 ;;; still brainstorming about what features it should have...
 (comment
+
+  (d/transact! conn '[[:db/add 5 :yoyo/ma "bingo"] [:db/add 8 :youou "hey"]])
+  
   (def poshtree (p/new-posh dcfg [:results]))
 
-  (p/add-pull db '[*] 3))
+  (def hux (p/add-db! poshtree :hux conn schema nil))
+
+  (def pull1 (p/add-pull! hux '[*] 3))
+
+  (def q1 (p/add-q! '[:find ?e
+                      :in $
+                      :where
+                      [?e :category/name _]]
+                    hux))
+
+
+  (p/results q1)
+  (p/results pull1)
+
+
+
+
+
+  )
+
+
+
