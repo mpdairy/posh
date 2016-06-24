@@ -29,8 +29,7 @@
                      (get posh-vars var))))
       (d/listen! conn :posh-listener
                  (fn [tx-report]
-                   ;;(println (:tx-data tx-report))
-                   (println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
+                   ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
                    (let [{:keys [ratoms changed]}
                          (reset! posh-atom (p/after-transact @posh-atom {conn tx-report}))]
                      (doall
@@ -92,11 +91,11 @@
                                        (r/atom query-result))
               query-reaction       (ra/make-reaction
                                     (fn []
-                                      (println "RENDERING: " storage-key)
+                                      ;;(println "RENDERING: " storage-key)
                                       @query-ratom)
                                     :on-dispose
                                     (fn [_ _]
-                                      (println "DISPOSING: " storage-key)
+                                      ;;(println "DISPOSING: " storage-key)
                                       (reset! posh-atom
                                               (assoc (p/remove-item @posh-atom storage-key)
                                                 :ratoms (dissoc (:ratoms @posh-atom) storage-key)
@@ -115,5 +114,28 @@
                          storage-key
                          #(p/add-pull % true-poshdb pull-pattern eid))))
 
+(defn pull-tx [tx-patterns poshdb pull-pattern edi]
+  (println "pull-tx is dprecated. Calling pull without your tx-patterns."))
+
+;;; q needs to find the posh-atom, go through args and convert any
+;;; conn's to true-poshdb's, generate the storage-key with true dbs
+
+(defn q [query & args]
+  (let [true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
+        posh-atom        (first (remove nil? (map get-posh-atom args)))
+        storage-key      [:q query true-poshdb-args]]
+    (make-query-reaction posh-atom
+                         storage-key
+                         (fn [dereffed-posh-atom]
+                           (apply (partial p/add-q dereffed-posh-atom query)
+                                  true-poshdb-args)))))
 
 
+(defn q-tx [tx-patterns query & args]
+  (println "q-tx is deprecated. Calling q without your tx-patterns.")
+  (apply (partial q query) args))
+
+
+
+(defn transact! [conn txs]
+  (d/transact! conn txs))
