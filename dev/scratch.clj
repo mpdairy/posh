@@ -30,8 +30,6 @@
 (defn new-entity! [conn varmap]
   ((:tempids (d/transact! conn [(merge varmap {:db/id -1})])) -1))
 
-
-
 (defn populate! [conn]
   (let [matt       (new-entity! conn {:person/name "Matt" :person/age 14})
         todo-id    (new-entity! conn {:todo/name "Matt's List" :todo/listing :all

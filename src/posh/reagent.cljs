@@ -1,7 +1,12 @@
 (ns posh.reagent
+  (:require-macros [reagent.ratom :refer [reaction]])
   (:require [posh.core :as p]
+            [posh.stateful :as ps]
             [posh.lib.db :as db]
-            [posh.lib.update :as u]))
+            [posh.lib.update :as u]
+            [datascript.core :as d]
+            [reagent.core :as r]
+            [reagent.ratom :as ra]))
 
 (def dcfg
   {:db d/db
@@ -17,22 +22,22 @@
 (defn set-conn-listener! [posh-atom conn db-id]
   (let [posh-vars {:posh-atom posh-atom
                    :db-id db-id}]
-    (d/listen! conn :posh-dispenser
-               (fn [var]
-                 (when (keyword? var)
-                   (get posh-vars var))))
-    (d/listen! conn :posh
-               (fn [tx-report]
-                 (swap! posh-atom
-                        (fn [posh-tree]
-                          (let [{:keys [changed] :as posh-tree}
-                                (p/after-transact posh-tree {conn tx-report})]
-                            (reduce (fn [{:keys [ratoms] :as posh-tree} [k v]]
-                                      (assoc posh-tree
-                                        :ratoms (assoc ratoms k
-                                                       (reset! (get ratoms k) v))))
-                                    posh-tree
-                                    changed))))))))
+    (do
+      (d/listen! conn :posh-dispenser
+                 (fn [var]
+                   (when (keyword? var)
+                     (get posh-vars var))))
+      (d/listen! conn :posh-listener
+                 (fn [tx-report]
+                   ;;(println (:tx-data tx-report))
+                   (println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
+                   (let [{:keys [ratoms changed]}
+                         (reset! posh-atom (p/after-transact @posh-atom {conn tx-report}))]
+                     (doall
+                      (map (fn [[k v]]
+                             (reset! (get ratoms k) (:results v)))
+                           changed)))))
+      conn)))
 
 
 (defn posh! [& conns]
@@ -56,13 +61,59 @@
 
 ;; Posh's state atoms are stored inside a listener in the meta data of
 ;; the datascript conn
-
-(defn get-atom [conn var]
+(defn get-conn-var [conn var]
   ((:posh-dispenser @(:listeners (meta conn))) var))
 
+(defn get-posh-atom [poshdb-or-conn]
+  (if (d/conn? poshdb-or-conn)
+    (get-conn-var poshdb-or-conn :posh-atom)
+    (ps/get-posh-atom poshdb-or-conn)))
+
+(defn get-db [poshdb-or-conn]
+  (if (d/conn? poshdb-or-conn)
+    [:db (get-conn-var poshdb-or-conn :db-id)]
+    poshdb-or-conn))
+
+(defn rm-posh-item [posh-atom storage-key]
+  (reset! posh-atom
+          (assoc (p/remove-item @posh-atom storage-key)
+            :ratoms (dissoc (:ratoms @posh-atom) storage-key)
+            :reactions (dissoc (:reactions @posh-atom) storage-key))))
+
+(defn make-query-reaction [posh-atom storage-key add-query-fn]
+  (if-let [r (get (:reactions @posh-atom) storage-key)]
+      r
+      (->
+       (reset!
+        posh-atom
+        (let [posh-atom-with-query (add-query-fn @posh-atom)
+              query-result         (:results (get (:cache posh-atom-with-query) storage-key))
+              query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
+                                       (r/atom query-result))
+              query-reaction       (ra/make-reaction
+                                    (fn []
+                                      (println "RENDERING: " storage-key)
+                                      @query-ratom)
+                                    :on-dispose
+                                    (fn [_ _]
+                                      (println "DISPOSING: " storage-key)
+                                      (reset! posh-atom
+                                              (assoc (p/remove-item @posh-atom storage-key)
+                                                :ratoms (dissoc (:ratoms @posh-atom) storage-key)
+                                                :reactions (dissoc (:reactions @posh-atom) storage-key)))))]
+          (assoc posh-atom-with-query
+            :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
+            :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction))))
+       :reactions
+       (get storage-key))))
 
 (defn pull [poshdb pull-pattern eid]
-  (let [storage-key [poshdb pull-pattern eid]]
-    (if-let [r (get (:reactions @(get-posh-atom poshdb)) storage-key)]
-      r
-      "Oh well")))
+  (let [true-poshdb (get-db poshdb)
+        storage-key [:pull true-poshdb pull-pattern eid]
+        posh-atom   (get-posh-atom poshdb)]
+    (make-query-reaction posh-atom
+                         storage-key
+                         #(p/add-pull % true-poshdb pull-pattern eid))))
+
+
+
