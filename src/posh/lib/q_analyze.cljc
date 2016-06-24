@@ -190,14 +190,17 @@
                                    ['_ (vars a) '_]]
          [[e a '_] [true false _]] [[(vars e) a '_]]
          [[e a '_] [false true _]] [[e (vars a) '_]]
+         [[e a '_] [false false _]] [[e a '_]]
          [[e '_ v] [true _ true]] [[(vars e) '_ '_]
                                    ['_ '_ (vars v)]]
          [[e '_ v] [true _ false]] [[(vars e) '_ v]]
          [[e '_ v] [false _ true]] [[e '_ (vars v)]]
+         [[e '_ v] [false _ false]] [[e '_ v]]
          [['_ a v] [_ true true]] [['_ '_  (vars v)]
                                    ['_ (vars a) '_]]
          [['_ a v] [_ true false]] [['_ (vars a) v]]
          [['_ a v] [_ false true]] [['_ a (vars v)]]
+         [['_ a v] [_ false false]] [['_ a v]]
          [[e a v] [true true true]] [['_ '_  (vars v)]
                                      ['_ (vars a) '_]
                                      [(vars e) '_ '_]]
@@ -210,7 +213,10 @@
          [[e a v] [false false true]] [[e a '_]]
          [[e a v] [true false false]] [['_ a v]]
          [[e a v] [false true false]] [[e '_ v]]
+         [[e a v] [false false false]] [[e a v]]   ;;; maybe this?
          :else [[]]))
+
+
 
 ;; this is the pattern that tells the filter it should update.
 ;; it won't match any v's that change unless they are connected
@@ -437,7 +443,7 @@
   (let [qm           (merge
                       {:in '[$]}
                       (query-to-map query))
-        where        (normalize-all-eavs (:where qm))
+        where        (normalize-all-eavs (vec (:where qm)))
         eavs         (get-eavs where)
         vars         (vec (get-all-vars eavs))
         newqm        (merge qm {:find vars :where where})
@@ -471,7 +477,7 @@
         (d/q {:find (vec (:find qm))
               :in [[vars '...]]}
              (vec r))})
-     (when (some #{:patterns :filter-patterns :patternstest} retrieve)
+     (when (some #{:patterns :filter-patterns} retrieve)
        (let
            [in-vars      (get-input-sets (:in qm) args)
             eavs-ins    (map (fn [[db & eav]]
@@ -493,8 +499,6 @@
                           #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
                           eavs-ins)]
          (merge
-          (when (some #{:patternstest} retrieve)
-            {:patternstest eavs-ins})
           (when (some #{:patterns} retrieve)
             {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)})
           (when (some #{:filter-patterns} retrieve)

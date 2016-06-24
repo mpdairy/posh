@@ -126,9 +126,7 @@
         storage-key      [:q query true-poshdb-args]]
     (make-query-reaction posh-atom
                          storage-key
-                         (fn [dereffed-posh-atom]
-                           (apply (partial p/add-q dereffed-posh-atom query)
-                                  true-poshdb-args)))))
+                         #(apply (partial p/add-q % query) true-poshdb-args))))
 
 
 (defn q-tx [tx-patterns query & args]

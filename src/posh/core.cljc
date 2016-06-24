@@ -110,7 +110,7 @@
           :graph (graph/add-item-connect graph storage-key [poshdb])
           :cache (assoc cache storage-key analysis)})))))
 
-(defn add-q [{:keys [cache graph dcfg conns conns-by-id retrieve] :as posh-tree} query & args]
+(defn add-q [{:keys [cache graph dcfg conns retrieve] :as posh-tree} query & args]
   (let [storage-key [:q query args]
         cached      (get cache storage-key)]
     (or cached

@@ -150,6 +150,7 @@
                 [:db :perm]
                 54)))
 
+(keys (:cache fulltree))
 
 ;; =========== testing adding tx to poshtree to see what changes =====
 (comment
@@ -234,6 +235,21 @@
                   :key :hux}
                  [:todo/name "Matt's List"]])
 
+
+  (qa/q-analyze dcfg
+                [:patterns :results]
+                '[:find ?c .
+                  :in $ ?t
+                  :where
+                  [?t :todo/display-category ?c]]
+                [{:conn conn
+                  :db   @conn
+                  :db-id :hux
+                  :schema (:schema @conn)
+                  :key :hux}
+                 [:todo/name "Matt's List"]])
+
+  
   (d/q '[:find ?task ?todo
          :in $ $2 ?todo
          :where
