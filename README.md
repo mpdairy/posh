@@ -1,14 +1,19 @@
 # Posh
 
 Posh is a ClojureScript / React library that lets you use a single
-[DataScript](https://github.com/tonsky/datascript/) database to store your app state. Components access the
+[DataScript](https://github.com/tonsky/datascript/) database to store
+your app state. Components access the
 data they need to render by calling DataScript queries with `q` or
 `pull` and are only updated when the query changes. `transact!` is
 used within components to change the global state. If you are familiar
 with Datomic, you will find Posh incredibly easy to use. If not, it's
 worth learning because of the power and versatility it will give your components.
 
-Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
+Posh is now self-contained and can be used with multiple front-ends
+(see `posh.core`), such as Reagent, Rum, or Quiescent. Only
+Reagent is currently well-supported by Posh, and is the focus of this documentation.
+
+`posh.reagent` uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
 project. Because it uses a single database to store app state, like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
 large, extensible apps and reusable components, with the added
 benefit of being much simpler to use and having a more expressive data
@@ -34,7 +39,8 @@ database changed an attribute of the `person-id` entity:
 
 Posh chat room on Gitter: https://gitter.im/mpdairy/posh
 
-I am also currently available for contract work.
+I am also currently looking for contract work or employment on a
+project that uses Posh.
 
 ### Examples:
 
@@ -42,32 +48,50 @@ I am also currently available for contract work.
 with categories, edit boxes, checkboxes, and multi-stage delete
 buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 
+### Projects Using Posh:
+* [Zetawar](http://www.zetawar.com/) "A highly customizable, open
+  source, turn-based, tactical strategy web game written in
+  ClojureScript."
+* [Datsys](https://github.com/metasoarous/datsys) A web framework.
+
+
 ## Usage
 
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.3.5"]
-[datascript "0.13.3"]
+[posh "0.5"]
 ```
+
 Require in Reagent app files:
 ```clj
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [pull q db-tx pull-tx q-tx after-tx! transact! posh!]]
+            [posh.reagent :refer [pull q posh!]]
             [datascript.core :as d]))
 ```
 
+###Important changes in 0.5
+* You must require `posh.reagent` in your ns's instead of `posh.core`.
+  This is because Posh 0.5's core is now front-end agnostic and
+  Reagent is just one of the front-ends it will work with (Rum and
+  Quiescent soon to come!)
+* Previously, Posh's `q` took the `conn` as the first argument. Now,
+  the `conn` is placed behind the query, in the args, as in DataScript
+  or Datomic's `q`.
+* db-tx, pull-tx, and q-tx are now deprecated. The tx-patterns generated
+  for `pull` are exact and for `q` are pretty thorough.
+
 ## Overview
 
-Posh gives you three functions to retrieve data from the database from
-within Reagent components: `pull`, `q`, and `db-tx`. They watch the
+Posh gives you two functions to retrieve data from the database from
+within Reagent components: `pull` and `q`. They watch the
 database's transaction report and only update (re-render) the hosting
 component when one of the transacted datoms affects the requested data.
 
 ### posh!
 
-`(posh! [DataScript conn])`
+`(posh! [DataScript conn1] ...)`
 
 Sets up the tx-report listener for a conn.
 
@@ -76,8 +100,13 @@ Sets up the tx-report listener for a conn.
 
 (posh! conn)
 ```
-You can do it for multiple conn's, though I can't imagine a good use case
-for that.
+
+New in Posh 0.5, you can `posh!` multiple conns together if you intend
+to ever use them together in a `q` query:
+
+```clj
+(posh! conn users-conn styles-conn)
+```
 
 ### pull
 
@@ -113,187 +142,61 @@ whenever `id` is updated and increases its age whenever clicked:
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) ": " (:person/age p)]))
 ```
-
-If you would like to fine-tune when `pull` actually attempts to pull
-new data, you can use `pull-tx`:
-
-`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
-
-Where `tx-pattern` is a datom matching pattern for the transaction
-queue. See the pattern-matching section below.
-
 ### q
 
-`(q [conn] [query] & args)`
+`(q [query] & args)`
 
-`q` queries for data from the database according to the rules
+`q` queries for data from the database according to the datalog rules
 specified in the query. It must be called within a Reagent component
 and will only update the component whenever the data it is querying
 has changed. See
 [Datomic's Queries and Rules](http://docs.datomic.com/query.html) for
-how to do datalog queries. `args` are optional extra variables that DataScript's `q` looks for
+how to do datalog queries. `args` are extra variables, including the
+conn or conns from which you will be querying, that DataScript's `q` looks for
 after the `[:find ...]` query if the query has an `:in` specification.
-By default, the database at the time of the latest transaction is implicitly
-passed in as the first arg, which will correspond with `$` in the
-`:in` clause.
+Note that Posh's `q` takes conns rather than dbs.
 
 Whenever the database has changed, `q` will check the transacted
 datoms to see if anything relevant to its query has occured. If so,
 `q` runs Datascript's `q` and compares the new query to the old. If it
 is different, the hosting component will update with the new data.
 
-Posh's `q` looks at the query pattern and tries to make a pattern to
-identify relevant tx datoms. If there is anything complex in the
-query, such as function calls or `get-else`, it will have a
-non-restrictive pattern and will run the query whenever there has been
-a database change. To specify the matching pattern by hand, you can
-use `q-tx`:
-
-`(q-tx [conn] [tx pattern] [query] & args)`
-
-`q-tx` takes a `tx pattern` as its second argument (see the Pattern
-Matching section below).
-
 Below is an example of a component that shows a list of people's names
-who are younger than a certain age. It only attempts the query when
-someone's age changes:
+who are younger than a certain age. It only attempts to re-query when
+someone's age changes or a young person's name changes:
 
 ```clj
-(defn people-younger-than [old-age]
-  (let [young @(q-tx conn [['_ :person/age]] '[:find [?name ...]
-                                               :in $ ?old
-                                               :where
-                                               [?p :person/age ?age]
-                                               [(< ?age ?old)]
-                                               [?p :person/name ?name]]
-                     old-age)]
-    [:ul "People younger than 30:"
-     (for [n young] ^{:key n} [:li n])]))
-```
-
-Or, if you called the same query with just `q`:
-```clj
-(q conn '[:find [?name ...]
-          :in $ ?old
-          :where
-          [?p :person/age ?age]
-          [(< ?age ?old)]
-          [?p :person/name ?name]]
+(q '[:find [?name ...]
+     :in $ ?old
+     :where
+     [?p :person/age ?age]
+     [(< ?age ?old)]
+     [?p :person/name ?name]]
+   conn
    old-age)
 ```
-In this case, `q` would run the query every time there is a
-transaction in the database because one of the clauses is a function
-call `(< ?age ?old)`.
 
-An example of a simple call would be:
-
-```clj
-(q conn '[:find [?name ...]
-          :in $ ?age
-          :where
-          [?p :person/age ?age]
-          [?p :person/name ?name]]
-   age)
-```
-This finds the name of every person whose `:person/age` is `age`. It
-will re-query whenever anyone's `:person/age` changes to or from `age`
-or whenever anybody's `:person/name` changes. 
-
-
-### db-tx
-
-`(db-tx [conn] [tx pattern])`
-
-`db-tx` listens to the tx report queue and returns the value of the
-database after a match. The hosting Reagent component won't update
-with a new db until there is a pattern match.
-
-It is generally recommended that you use `pull`s and `q`s for any
-components instead of `db-tx`. If you do use `db-tx`, it is
-very important to provide thorough tx pattern matching rules to
-restrict the component from re-rendering each time the db changes.
-
-This example displays a list of people who are ten years old. The
-component will only update when someone's age is set to 10 or changed
-from 10 (retracted).
-
-```clj
-(defn ten-year-olds []
-  (let [db   @(db-tx conn '[[_ :person/age 10]])
-        kids (map (partial d/entity db)
-                  (d/q '[:find [?p ...] :where
-                         [?p :person/age ?a]
-                         [(= ?a 10)]]
-                       db))]
-    [:ul "These kids are ten years old:"
-     (for [k kids]
-       ^{:key (:db/id k)} [:li (:person/name k)])]))
-```
-(Note: the above component should have just used posh's `q`)
-
-The example below displays a person and increases its own age
-whenever clicked. It only re-renders when a datom with its own
-entity id is transacted.
-
-```clj
-(defn person [id]
-  (let [db @(db-tx conn [[id]])
-        p  (d/entity db id)]
-    [:div
-     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
-     (:person/name p) " -- " (:person/age p)]))
-```
-
-(Note: the above component should have just used posh's `pull`)
-
-### after-tx!
-
-`(after-tx! conn [tx patterns] handler-fn)`
-
-`after-tx!` sets up a listener that watches for a transaction pattern match, then
-calls `(handler-fn matching-tx-datom db-after)`.
-
-```clj
-;; congratulates any one who turns 21
-(after-tx! conn
-          '[[_ :person/age 21 _ true]]
-          (fn [[e a v] db]
-            (js/alert (str "You have come of age, "
-                           (:person/name (d/entity db e)) "."))))
-```
-
-You could use `after-tx!` to handle events or to trigger communication
-with the server.
+Currently, `pull` is not supported inside `q`. It is recommended to
+query for the eids, manually send them to components with a separate
+pull for each eid.
 
 ### transact!
 
-`transact!` operates just like DataScript's `transact!`:
+`posh.reagent`'s `transact!` currently just calls DataScript's `transact!`:
 
 ```clj
 (transact! conn [[:db/add 123 :person/name "Jim"]])
 ```
 
-Posh's transact just calls DataScript's transact, but returns an empty
-`[:span]` so that it can easily be used inside the body of components.
+### posh-atom
 
-### active-queries
+`(get-posh-atom conn)`
 
-`(active-queries conn)`
-
-Returns a Reagent atom that contains a set of descriptions of all the `q`, `pull`,
-and `db-tx` queries called from within any currently-rendered Reagent components.
-
-Their descriptions are represented as vectors that are the same order
-as the arguments to `db-tx`, `q-tx`, and `pull-tx`:
-
-```clj
-[:db-tx <tx-patterns>]
-
-[:pull <tx-patterns> <pull-pattern> <entity-identifier>]
-
-[:q <tx-pattern> <query> <args>]  ;; args is a vector of args
-                                  ;; or nil if none
-```
+The cache of all the queries is stored inside the posh-atom, which is
+pointed to by the conn. If you want to see or edit things "under the
+hood", this is where to go. The dereffed posh-atom can be used as the
+`posh-tree` in the functions in `posh.core`. A wiki will
+one day explain further.
 
 ## Advanced Examples
 
@@ -347,57 +250,18 @@ This can be called with any entity and its text attrib, like
 `[editable-label conn 123 :person/name]` or
 `[editable-label conn 432 :category/title]`.
 
-## Pattern Matching
-
-Posh now generates exactly thorough pattern matching for `pull` and
-pretty efficient patterns for `q`, so you shouldn't need to specify your
-own unless you want to make things update less, like if you want
-certain components to just listen to a refresh signal, or if you are
-using `after-tx` or `db-tx`.
-
-The datom pattern matcher just takes a list of vectors that consist of
-values, sets, or a wildcard that match against tx-datoms. Tx-datoms
-are structured as: `[eid attr val tx added?]`. Typically
-you'll just want to match the `eid` and `attr`, and sometimes
-`val` if there is a ref.
-
-```clj
-(use 'posh.datom-matcher)
-
-;; (datom-match? patterns datom)
-
-(datom-match? '[[12 _ "hey"]] [12 :greeting "hey"])  ;; true
-
-(datom-match? '[[12 _ "what"]] [12 :greeting "hey"])  ;; false
-
-;; it just has to match one of the patterns
-(datom-match? '[[12 _ "what"]
-                [12 _ "hey"]]
-              [12 :greeting "hey"])  ;; true
-
-;; sets just see if the thing is in the set
-(datom-match? '[[12 _ #{"what" "hey"}]] [12 :greeting "hey"]) ;; true
-
-;; if it reaches the end of the pattern, it's a match:
-(datom-match? '[[4]] [4 :person/name "Jimmy Hogan"])  ;; true
-
-;; here's an example of a pattern generated for a pull that has some refs:
-'[[_ :category/todo 1]
-  [2 #{:category/name :category/slug} _]
-  [_ :task/category 2]
-  [3 #{:category/name :category/slug} _]
-  [_ :task/category 3]
-  [4 #{:category/name :category/slug} _]
-  [_ :task/category 4]]
-
-```
 ## Back-end
 
-We are working on automating the back-end sync with
-datomic/datascript. Basically, the server will keep track of all the
-active queries for a client, do its own pattern matching on the tx-report, and send
-only the datoms that the client is looking for and does not already
-have. Should be nice.
+As of version 0.5, `posh.core` should be able to run on Datomic
+databases and keep track of all queries. It can also generate, for any
+`q` or `pull`, the "necessary datoms" needed in a bare database to get
+the same result for that `q` or `pull`, which means that the front-end
+can send its graph of queries to the backend and get back any datoms
+needed to update its db whenever anything relevant changes.
+
+[Datsync](https://github.com/metasoarous/datsync) is a utility that
+eventually will do this, though currently it just copies the entire
+Datomic db over to DataScript.
 
 See our Gitter room for updates: https://gitter.im/mpdairy/posh
 
