@@ -81,6 +81,9 @@ Require in Reagent app files:
   or Datomic's `q`.
 * db-tx, pull-tx, and q-tx are now deprecated. The tx-patterns generated
   for `pull` are exact and for `q` are pretty thorough.
+* `q` with `get-else` and `pull` do not currently work in 0.5, though
+  they sort-of worked in the older version. If you need to use those,
+  just keep using the older version until those expressions are supported.
 
 ## Overview
 
