@@ -51,12 +51,12 @@
                             (apply merge))
         fixed-args     (->> (zipmap (:in qm) args)
                             (map (fn [[sym arg]]
-                                   (or (get poshdbmap sym) arg))))]
+                                   (or (get poshdbmap sym) arg))))
+        analysis       (qa/q-analyze dcfg retrieve query fixed-args)]
     {:dbvarmap dbvarmap
-     :analysis (let [analysis (qa/q-analyze dcfg retrieve query fixed-args)]
-                 (merge analysis
-                        {:reload-patterns (:patterns analysis)
-                         :reload-fn posh.lib.update/update-q}))}))
+     :analysis (merge analysis
+                      {:reload-patterns (:patterns analysis)
+                       :reload-fn posh.lib.update/update-q})}))
 
 (defn update-q [posh-tree storage-key]
   ;;(println "updated q: " storage-key)

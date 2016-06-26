@@ -115,7 +115,7 @@
                          #(p/add-pull % true-poshdb pull-pattern eid))))
 
 (defn pull-tx [tx-patterns poshdb pull-pattern edi]
-  (println "pull-tx is dprecated. Calling pull without your tx-patterns."))
+  (println "pull-tx is deprecated. Calling pull without your tx-patterns."))
 
 ;;; q needs to find the posh-atom, go through args and convert any
 ;;; conn's to true-poshdb's, generate the storage-key with true dbs

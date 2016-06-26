@@ -70,7 +70,8 @@
   (let [dbeav (if (dbvar? (first eav))
                 eav
                 (cons (symbol "$") eav))]
-    (vec (cons (first dbeav) (:eav (normalize-eav-helper (rest dbeav) 3 [] []))))))
+    (vec (cons (first dbeav) (concat (:eav (normalize-eav-helper (rest dbeav) 3 [] []))
+                                     (drop 4 dbeav))))))
 
 (defn normalize-all-eavs [where]
   (cond
@@ -92,6 +93,7 @@
 
    :else where))
 
+
 (defn get-eavs [where]
   (if (empty? where)
     []
@@ -106,10 +108,13 @@
        (cons item (get-eavs (rest where)))
 
        (and (vector? item) (seq? (first item)))
-       (get-eavs (vec (rest where)))
-
+       (match (vec (concat [(vec (first item))] (rest item)))
+              [['get-else db e a _] v]
+              (concat [[db e a v]] (get-eavs (vec (rest where))))
+              :else (get-eavs (vec (rest where))))
 
        :else (get-eavs (vec (rest where)))))))
+
 
 (defn qm-to-query [qm]
   (reduce (fn [xs [k v]]

@@ -9,7 +9,7 @@
              (= p '_)
              (and (set? p) (p (first datom)))
              (= p (first datom))))
-      (datom-match-pattern? (rest pattern) (rest datom)))))
+      (recur (rest pattern) (rest datom)))))
 
 (defn datom-match? [patterns datom]
   (some #(datom-match-pattern? % datom) patterns))

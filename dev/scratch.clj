@@ -70,6 +70,9 @@
        :task/pinned true
        :task/category work-stuff}])))
 
+(try
+  (+ 3 "a")
+  (catch Exception e (+ 3 0)))
 
 (populate! conn)
 
@@ -203,15 +206,17 @@
                            54)
 
   (qa/q-analyze dcfg
-                [:results :datoms :patterns]
-                '[:find ?task ?task-name ?list-name
+                [:results :patterns :datoms]
+                '[:find ?task ?task-name ?list-name ?todo-name
                   :in $ ?true [?owner-name ...]
                   :where
                   [?p :person/name ?owner-name]
                   [?todo :todo/owner ?p]
+                  [(get-else $ ?todo :todo/nickname "nothing") ?todo-name]
                   [?todo :todo/name ?list-name]
                   [?cat  :category/todo ?todo]
                   [?task :task/category ?cat]
+                  [(> ?task 8)]
                   [?task :task/done ?true]
                   [?task :task/name ?task-name]]
                 [{:conn conn
@@ -220,6 +225,33 @@
                   :schema (:schema @conn)
                   :key :hux}
                  true ["Matt" "Jim"]])
+
+  (qa/get-eavs '[[?p :person/name ?owner-name ?t]
+                 [(> ?t 3423)]
+                 [?todo :todo/owner ?p]
+                 [?todo :todo/name ?list-name]
+                 [?cat  :category/todo ?todo]
+                 [(get-else $ ?todo :todo/nickname "nothing") ?todo-name]
+                 [?task :task/category ?cat]
+                 [(> ?task 8)]
+                 [?task :task/done ?true]
+                 [?task :task/name ?task-name]])
+
+  (d/q '[:find ?task ?task-name ?list-name ?todo-name
+         :in $ ?true [?owner-name ...]
+         :where
+         [?p :person/name ?owner-name]
+         [?todo :todo/owner ?p]
+         [(get-else $ ?todo :todo/nickname "nothing") ?todo-name]
+         [?todo :todo/name ?list-name]
+         [?cat  :category/todo ?todo]
+         [?task :task/category ?cat]
+         [(> ?task 7)]
+         [?task :task/done ?true]
+         [?task :task/name ?task-name]]
+       @conn
+       true ["Matt" "Jim"])
+
 
   (qa/q-analyze dcfg
                 [:patterns]
