@@ -41,7 +41,7 @@
   "Returns {:dbvarmap .. :analysis ..}"
   (let [[_ query args] storage-key
         retrieve       (concat [:results :patterns] retrieve)
-        qm             (qa/query-to-map query)
+        qm             (merge {:in '[$]} (qa/query-to-map query))
         dbvarmap       (qa/make-dbarg-map (:in qm) args)
         poshdbs        (vals dbvarmap)
         poshdbmap      (->> dbvarmap

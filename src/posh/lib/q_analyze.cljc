@@ -478,7 +478,9 @@
                             (util/t-for-datoms (:q dcfg) (:db db) db-datoms)})))
                   (apply merge))}))))
      (when (some #{:results} retrieve)
-       {:results
+       {:fixed-args fixed-args
+        :dbvarmap dbvarmap
+        :results
         (d/q {:find (vec (:find qm))
               :in [[vars '...]]}
              (vec r))})

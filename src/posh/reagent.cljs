@@ -95,11 +95,11 @@
                                       @query-ratom)
                                     :on-dispose
                                     (fn [_ _]
-                                      ;;(println "DISPOSING: " storage-key)
+                                      ;;(println "no DISPOSING: " storage-key)
                                       (reset! posh-atom
-                                              (assoc (p/remove-item @posh-atom storage-key)
-                                                :ratoms (dissoc (:ratoms @posh-atom) storage-key)
-                                                :reactions (dissoc (:reactions @posh-atom) storage-key)))))]
+                                                        (assoc (p/remove-item @posh-atom storage-key)
+                                                          :ratoms (dissoc (:ratoms @posh-atom) storage-key)
+                                                          :reactions (dissoc (:reactions @posh-atom) storage-key)))))]
           (assoc posh-atom-with-query
             :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
             :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction))))

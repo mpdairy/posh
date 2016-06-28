@@ -155,6 +155,35 @@
 
 (keys (:cache fulltree))
 
+(def conn3 (d/create-conn))
+ 
+(d/transact!
+ conn3
+ [{:db/id -1
+   :name "joe"}
+ 
+  {:db/id -2
+   :name "sally"}
+ 
+  {:db/id -3
+   :name "bob"}])
+
+(comment
+
+  (qa/q-analyze dcfg
+                [:results]
+                '[:find ?name
+                  :where [_ :name ?name]]
+                [{:conn conn3
+                  :db   @conn3
+                  :db-id :hux
+                  :schema (:schema @conn3)
+                  :key :hux}])
+
+  
+  )
+
+
 ;; =========== testing adding tx to poshtree to see what changes =====
 (comment
 

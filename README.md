@@ -60,7 +60,7 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.5"]
+[posh "0.5.1"]
 ```
 
 Require in Reagent app files:
@@ -71,7 +71,11 @@ Require in Reagent app files:
             [datascript.core :as d]))
 ```
 
-###Important changes in 0.5
+###Important changes
+####0.5.1
+* `get-else` now works with `q`, but still no `pull` in q.
+* `q` with no `:in` args now works properly
+####0.5
 * You must require `posh.reagent` in your ns's instead of `posh.core`.
   This is because Posh 0.5's core is now front-end agnostic and
   Reagent is just one of the front-ends it will work with (Rum and
@@ -83,7 +87,10 @@ Require in Reagent app files:
   for `pull` are exact and for `q` are pretty thorough.
 * `q` with `get-else` and `pull` do not currently work in 0.5, though
   they sort-of worked in the older version. If you need to use those,
-  just keep using the older version until those expressions are supported.
+  just keep using the older version until those expressions are
+  supported.
+####0.3.5
+* Downgrade to this version if you are having problems with later versions.
 
 ## Overview
 
