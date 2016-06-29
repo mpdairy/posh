@@ -92,9 +92,6 @@ Require in Reagent app files:
   just keep using the older version until those expressions are
   supported.
   
-####0.3.5
-* Downgrade to this version if you are having problems with later versions.
-
 ## Overview
 
 Posh gives you two functions to retrieve data from the database from
