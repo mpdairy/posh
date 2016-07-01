@@ -9,7 +9,7 @@
             [posh.lib.graph :as graph]))
 
 ;; cache - {storage-key {analysis-info...}} stores info about components
-;; graph - {storage-key {:outputs [keys...] :inputs [keys ...]}}
+;; graph - {storage-key {:outputs #{keys...} :inputs #{keys ...}}}
 ;;         used to pass tx around tree
 ;; dcfg - map of datascript/datomic functions
 ;; retrieve - vector of what you want from the queries

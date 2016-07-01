@@ -74,35 +74,38 @@
     poshdb-or-conn))
 
 (defn rm-posh-item [posh-atom storage-key]
-  (reset! posh-atom
-          (assoc (p/remove-item @posh-atom storage-key)
-            :ratoms (dissoc (:ratoms @posh-atom) storage-key)
-            :reactions (dissoc (:reactions @posh-atom) storage-key))))
+  (swap! posh-atom
+         (fn [posh-atom-val]
+           (assoc (p/remove-item posh-atom-val storage-key)
+             :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
+             :reactions (dissoc (:reactions posh-atom-val) storage-key)))))
 
 (defn make-query-reaction [posh-atom storage-key add-query-fn]
   (if-let [r (get (:reactions @posh-atom) storage-key)]
       r
       (->
-       (reset!
+       (swap!
         posh-atom
-        (let [posh-atom-with-query (add-query-fn @posh-atom)
-              query-result         (:results (get (:cache posh-atom-with-query) storage-key))
-              query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
-                                       (r/atom query-result))
-              query-reaction       (ra/make-reaction
-                                    (fn []
-                                      ;;(println "RENDERING: " storage-key)
-                                      @query-ratom)
-                                    :on-dispose
-                                    (fn [_ _]
-                                      ;;(println "no DISPOSING: " storage-key)
-                                      (reset! posh-atom
-                                                        (assoc (p/remove-item @posh-atom storage-key)
-                                                          :ratoms (dissoc (:ratoms @posh-atom) storage-key)
-                                                          :reactions (dissoc (:reactions @posh-atom) storage-key)))))]
-          (assoc posh-atom-with-query
-            :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
-            :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction))))
+        (fn [posh-atom-val]
+          (let [posh-atom-with-query (add-query-fn posh-atom-val)
+                query-result         (:results (get (:cache posh-atom-with-query) storage-key))
+                query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
+                                         (r/atom query-result))
+                query-reaction       (ra/make-reaction
+                                      (fn []
+                                        ;;(println "RENDERING: " storage-key)
+                                        @query-ratom)
+                                      :on-dispose
+                                      (fn [_ _]
+                                        ;;(println "no DISPOSING: " storage-key)
+                                        (swap! posh-atom
+                                               (fn [posh-atom-val]
+                                                 (assoc (p/remove-item posh-atom-val storage-key)
+                                                   :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
+                                                   :reactions (dissoc (:reactions posh-atom-val) storage-key))))))]
+            (assoc posh-atom-with-query
+              :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
+              :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction)))))
        :reactions
        (get storage-key))))
 

@@ -10,22 +10,18 @@
 (defn new-graph [] {})
 
 ;; add-item :: graph -> key -> graph
+;; only adds if item doesn't exist
 (defn add-item [graph item-k]
   (merge {item-k {:inputs #{} :outputs #{}}}
          graph))
 
-;; update-item :: graph -> key -> key -> fn ->  graph
-(defn update-item [graph item-k item-attr f]
-  (update graph item-k (fn [item]
-                    (update item item-attr f))))
-
 ;; add-item-input :: graph -> key -> key -> graph
 (defn add-input [graph item-k input]
-  (update-item graph item-k :inputs #(conj % input)))
+  (update-in graph [item-k :inputs] conj input))
 
 ;; add-item-output :: graph -> key -> key -> graph
 (defn add-output [graph item-k output]
-  (update-item graph item-k :outputs #(conj % output)))
+  (update-in graph [item-k :outputs] conj output))
 
 (defn add-item-full [graph item-k inputs outputs]
   (reduce (fn [gr input] (add-input gr item-k input))
@@ -45,11 +41,11 @@
 
 ;; remove-input :: graph -> key -> key -> graph
 (defn remove-input [graph item-k input]
-  (update-item graph item-k :inputs #(disj % input)))
+  (update-in graph [item-k :inputs] disj input))
 
 ;; remove-output :: graph -> key -> key -> graph
 (defn remove-output [graph item-k output]
-  (update-item graph item-k :outputs #(disj % output)))
+  (update-in graph [item-k :outputs] disj output))
 
 ;; rm-dep :: graph -> key -> key -> graph
 (defn remove-dep [graph k dep-k]
