@@ -32,10 +32,8 @@
                    ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
                    (let [{:keys [ratoms changed]}
                          (reset! posh-atom (p/after-transact @posh-atom {conn tx-report}))]
-                     (doall
-                      (map (fn [[k v]]
-                             (reset! (get ratoms k) (:results v)))
-                           changed)))))
+                     (doseq [[k v] changed]
+                       (reset! (get ratoms k) (:results v))))))
       conn)))
 
 
@@ -117,8 +115,9 @@
                          storage-key
                          #(p/add-pull % true-poshdb pull-pattern eid))))
 
-(defn pull-tx [tx-patterns poshdb pull-pattern edi]
-  (println "pull-tx is deprecated. Calling pull without your tx-patterns."))
+(defn pull-tx [tx-patterns poshdb pull-pattern eid]
+  (println "pull-tx is deprecated. Calling pull without your tx-patterns.")
+  (pull poshdb pull-pattern eid))
 
 ;;; q needs to find the posh-atom, go through args and convert any
 ;;; conn's to true-poshdb's, generate the storage-key with true dbs
@@ -134,7 +133,7 @@
 
 (defn q-tx [tx-patterns query & args]
   (println "q-tx is deprecated. Calling q without your tx-patterns.")
-  (apply (partial q query) args))
+  (apply q query args))
 
 
 

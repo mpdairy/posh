@@ -116,7 +116,7 @@
       )))
 
 (defn limit-spec? [x]
-  (and (seq? x) (= (first x) 'limit)))
+  (and (seq? x) (#{'limit "limit"} (first x))))
 
 (defn limit-attr [limit-spec]
   (second limit-spec))
@@ -128,7 +128,7 @@
 (defn recursive-val? [v]
   (or (number? v) (= v '...)))
 
-(defn tx-pattern-for-pull [schema pull-pattern affected-pull]
+(defn tx-pattern-for-pull [schema pull-pattern affected-pull refs-only?]
   (let [entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
         val-keys    (remove #(or (reverse-lookup? %) (ref? schema %)) entity-keys)
         ref-keys    (->> entity-keys
@@ -138,7 +138,7 @@
         pull-maps   (reduce merge (concat ref-keys (filter map? pull-pattern)))]
     (when (:db/id affected-pull)
       (concat
-       (when (not (empty? val-keys))
+       (when (not (or refs-only? (empty? val-keys)))
          [[(:db/id affected-pull) (if starred? '_ (set val-keys)) '_]])
        (mapcat (fn [[ref-key ref-pull]]
                  (let [r? (reverse-lookup? ref-key)
@@ -150,47 +150,15 @@
                     (cond
                      (recursive-val? ref-pull)
                      (when (ref-key affected-pull)
-                       (mapcat #(tx-pattern-for-pull schema pull-pattern %)
+                       (mapcat #(tx-pattern-for-pull schema pull-pattern % refs-only?)
                                (ref-key affected-pull)))
 
                      (or r? (cardinality-many? schema unrev-key))
-                     (mapcat #(tx-pattern-for-pull schema ref-pull %)
+                     (mapcat #(tx-pattern-for-pull schema ref-pull % refs-only?)
                              (ref-key affected-pull))
                      :else
-                     (tx-pattern-for-pull schema ref-pull (ref-key affected-pull))))))
+                     (tx-pattern-for-pull schema ref-pull (ref-key affected-pull refs-only?))))))
                pull-maps)))))
-
-
-(defn tx-ref-pattern-for-pull [schema pull-pattern affected-pull]
-  (let [entity-keys (remove #(or (map? %) (= :db/id %)) pull-pattern)
-        val-keys    (remove #(or (reverse-lookup? %) (ref? schema %)) entity-keys)
-        ref-keys    (->> entity-keys
-                         (remove (set val-keys))
-                         (map (fn [k] {k [:db/id]})))
-        starred?    (some #{'*} val-keys)
-        pull-maps   (reduce merge (concat ref-keys (filter map? pull-pattern)))]
-    (when (:db/id affected-pull)
-      (mapcat (fn [[ref-key ref-pull]]
-                (let [r? (reverse-lookup? ref-key)
-                      unrev-key (if r? (reverse-lookup ref-key) ref-key)]
-                  (concat
-                   (if r?
-                     [['_ unrev-key (:db/id affected-pull)]]
-                     [[(:db/id affected-pull) ref-key '_]])
-                   (cond
-                    (recursive-val? ref-pull)
-                    (when (ref-key affected-pull)
-                      (mapcat #(tx-ref-pattern-for-pull schema pull-pattern %)
-                              (ref-key affected-pull)))
-
-                    (or r? (cardinality-many? schema unrev-key))
-                    (mapcat #(tx-ref-pattern-for-pull schema ref-pull %)
-                            (ref-key affected-pull))
-                    :else
-                    (tx-ref-pattern-for-pull schema ref-pull (ref-key affected-pull))))))
-              pull-maps))))
-
-;;; combo them bad boys
 
 ;; retrieve :datoms, :patterns, or :results
 ;; db should be {:db db :schema schema :db-id db-id}
@@ -218,15 +186,17 @@
                  (tx-pattern-for-pull
                   schema
                   prepped-pull-pattern
-                  affected-datoms))}})
+                  affected-datoms
+                  false))}})
             (when (some #{:ref-patterns} retrieve)
               {:ref-patterns
                {db-id
                 (dm/reduce-patterns
-                 (tx-ref-pattern-for-pull
+                 (tx-pattern-for-pull
                   schema
                   prepped-pull-pattern
-                  affected-datoms))}}))))))))
+                  affected-datoms
+                  true))}}))))))))
  
 (defn pull-many-analyze [dcfg retrieve {:keys [db schema db-id]} pull-pattern ent-ids]
   (when-not (empty? retrieve)

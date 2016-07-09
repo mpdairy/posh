@@ -1,6 +1,5 @@
 (ns posh.core
-  (:require [datascript.core :as d]
-            [posh.lib.util :as util]
+  (:require [posh.lib.util :as util]
             [posh.lib.datom-matcher :as dm]
             [posh.lib.pull-analyze :as pa]
             [posh.lib.q-analyze :as qa]
@@ -131,15 +130,6 @@
 
 
 ;; ======================= updating tree when there are TX's ======================
-
-(declare cache-changes)
-(defn cache-changes-across [posh-tree db-id tx new-cache storage-keys]
-  (if (empty? storage-keys)
-    new-cache
-    (recur posh-tree db-id tx
-           (merge new-cache
-                  (cache-changes posh-tree db-id tx new-cache (first storage-keys)))
-           (rest storage-keys))))
 
 (defn cache-changes [{:keys [graph cache] :as posh-tree} db-id tx new-cache storage-key]
   (if (get new-cache storage-key)

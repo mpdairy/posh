@@ -1,6 +1,5 @@
 (ns posh.stateful
-  (:require [datascript.core :as d]
-            [posh.core :as p]
+  (:require [posh.core :as p]
             [posh.lib.db :as db]
             [posh.lib.update :as u]))
 

@@ -176,6 +176,10 @@
                        (<= wildcard-count qvar-count)))]
       [ee aa vv])))
 
+(defn get_ [m k]
+  "returns '_ if k is not found"
+  (or (get m k) '_))
+
 ;; generates matching patterns from eavs.
 ;; the qvars are "connecting" vars that are used between
 ;; two eavs in the query. the '_ wildcards are either output
@@ -186,40 +190,41 @@
   (match [(vec eav) (vec (map qvar? eav))]
          [['_ '_ '_] _] [[]]
          [['_ '_ v] [_ _ false]] [['_ '_ v]]
-         [['_ '_ v] [_ _ true]] [['_ '_ (vars v)]]
+         [['_ '_ v] [_ _ true]] [['_ '_ (get_ vars v)]]
          [['_ a '_] [_ false _]] [['_ a '_]]
-         [['_ a '_] [_ true _]] [['_ (vars a) '_]]
+         [['_ a '_] [_ true _]] [['_ (get_ vars a) '_]]
          [[e '_ '_] [false _ _]] [[e '_ '_]]
-         [[e '_ '_] [true _ _]] [[(vars e) '_ '_]]
-         [[e a '_] [true true _]] [[(vars e) '_ '_]
-                                   ['_ (vars a) '_]]
-         [[e a '_] [true false _]] [[(vars e) a '_]]
-         [[e a '_] [false true _]] [[e (vars a) '_]]
+         [[e '_ '_] [true _ _]] [[(get_ vars e) '_ '_]]
+         [[e a '_] [true true _]] [[(get_ vars e) '_ '_]
+                                   ['_ (get_ vars a) '_]]
+         [[e a '_] [true false _]] [[(get_ vars e) a '_]]
+         [[e a '_] [false true _]] [[e (get_ vars a) '_]]
          [[e a '_] [false false _]] [[e a '_]]
-         [[e '_ v] [true _ true]] [[(vars e) '_ '_]
-                                   ['_ '_ (vars v)]]
-         [[e '_ v] [true _ false]] [[(vars e) '_ v]]
-         [[e '_ v] [false _ true]] [[e '_ (vars v)]]
+         [[e '_ v] [true _ true]] [[(get_ vars e) '_ '_]
+                                   ['_ '_ (get_ vars v)]]
+         [[e '_ v] [true _ false]] [[(get_ vars e) '_ v]]
+         [[e '_ v] [false _ true]] [[e '_ (get_ vars v)]]
          [[e '_ v] [false _ false]] [[e '_ v]]
-         [['_ a v] [_ true true]] [['_ '_  (vars v)]
-                                   ['_ (vars a) '_]]
-         [['_ a v] [_ true false]] [['_ (vars a) v]]
-         [['_ a v] [_ false true]] [['_ a (vars v)]]
+         [['_ a v] [_ true true]] [['_ '_  (get_ vars v)]
+                                   ['_ (get_ vars a) '_]]
+         [['_ a v] [_ true false]] [['_ (get_ vars a) v]]
+         [['_ a v] [_ false true]] [['_ a (get_ vars v)]]
          [['_ a v] [_ false false]] [['_ a v]]
-         [[e a v] [true true true]] [['_ '_  (vars v)]
-                                     ['_ (vars a) '_]
-                                     [(vars e) '_ '_]]
-         [[e a v] [false true true]] [[e '_  (vars v)]
-                                      [e (vars a) '_]]
-         [[e a v] [true false true]] [['_ a  (vars v)]
-                                      [(vars e) a '_]]
-         [[e a v] [true true false]] [['_ (vars a) v]
-                                      [(vars e) '_ v]]
+         [[e a v] [true true true]] [['_ '_  (get_ vars v)]
+                                     ['_ (get_ vars a) '_]
+                                     [(get_ vars e) '_ '_]]
+         [[e a v] [false true true]] [[e '_  (get_ vars v)]
+                                      [e (get_ vars a) '_]]
+         [[e a v] [true false true]] [['_ a  (get_ vars v)]
+                                      [(get_ vars e) a '_]]
+         [[e a v] [true true false]] [['_ (get_ vars a) v]
+                                      [(get_ vars e) '_ v]]
          [[e a v] [false false true]] [[e a '_]]
          [[e a v] [true false false]] [['_ a v]]
          [[e a v] [false true false]] [[e '_ v]]
          [[e a v] [false false false]] [[e a v]]   ;;; maybe this?
          :else [[]]))
+
 
 
 
@@ -385,9 +390,9 @@
 ;;;;;;;; the t of each datom will be part of the q).
 
 ;; instead of passing db's to q-analyze you pass
-;; {:conn conn :db db :schema schema :key key}
+;; {:conn conn :db db :schema schema :db-id db-id}
 
-;; it will return the requested info, sorted by key.
+;; it will return the requested info, sorted by db-id.
 
 ;; not necessarily working at this time...
 (comment
@@ -507,6 +512,7 @@
                           eavs-ins)]
          (merge
           (when (some #{:patterns} retrieve)
-            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)})
+            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
+             :debug    {:rvars rvars :r r}})
           (when (some #{:filter-patterns} retrieve)
             {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))

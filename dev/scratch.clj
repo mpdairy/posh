@@ -348,7 +348,18 @@
   (p/results pull1)
 
 
+  (def testconn (d/create-conn))
 
+  (qa/q-analyze
+   dcfg
+   [:results :patterns]
+   '[:find ?e ?pfn ?pln ?pf ?pda
+     :where
+     [?e :participant/firstName ?pfn]
+     [?e :participant/lastName ?pln]
+     [?e :participant/photo ?pf]
+     [?e :participant/dateAdded ?pda]]
+   [{:conn testconn :db @testconn :schema nil :db-id :debug}])
 
 
   )
