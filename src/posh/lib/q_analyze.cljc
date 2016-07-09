@@ -512,7 +512,6 @@
                           eavs-ins)]
          (merge
           (when (some #{:patterns} retrieve)
-            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
-             :debug    {:rvars rvars :r r}})
+            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)})
           (when (some #{:filter-patterns} retrieve)
             {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))
