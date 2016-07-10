@@ -152,5 +152,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn transact! [conn txs]
-  (d/transact! conn txs))
+(defn transact! [poshdb-or-conn txs]
+  (d/transact!
+   (if (d/conn? poshdb-or-conn)
+     poshdb-or-conn
+     (ps/poshdb->conn poshdb-or-conn))
+   txs))

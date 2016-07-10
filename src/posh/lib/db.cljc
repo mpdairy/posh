@@ -66,6 +66,7 @@
      (poshdb->db posh-tree (get-parent-db poshdb))
      (make-filter-pred (:pass-patterns (get cache poshdb))))))
 
+
 (defn poshdb->analyze-db [posh-tree poshdb]
   (let [db-id (poshdb->db-id poshdb)]
     {:db (poshdb->db posh-tree poshdb)

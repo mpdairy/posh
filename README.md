@@ -280,7 +280,8 @@ filters to `or` them together.
 
 ### transact!
 
-`posh.reagent`'s `transact!` currently just calls DataScript's `transact!`:
+`posh.reagent`'s `transact!` takes a conn or a posh filter and
+transacts to the conn or the root conn of the filter.
 
 ```clj
 (transact! conn [[:db/add 123 :person/name "Jim"]])

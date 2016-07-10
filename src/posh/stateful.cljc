@@ -6,6 +6,9 @@
 (defn get-posh-atom [posh-item]
   (:posh (meta posh-item)))
 
+(defn poshdb->conn [poshdb]
+  (:conn (db/poshdb->attrs @(get-posh-atom poshdb) poshdb)))
+
 (defn new-posh [dcfg retrieve]
   (atom (p/empty-tree dcfg retrieve)))
 

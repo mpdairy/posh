@@ -359,11 +359,14 @@
                                 '[{:task/_category [:task/name]}]
                                 [:category/name "Hobby"]))
 
-
+  (p/poshdb->conn filtp)
   (p/cache filtp)
   
   (db/poshdb->db @poshtree filtp)
 
+  (def f (d/filter @conn (fn [db datom] (do (println datom)
+                                           (odd? (first datom))))))
+  f
 
   (:pass-patterns (p/cache filtq))
   (p/results q1)
