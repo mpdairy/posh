@@ -19,9 +19,12 @@
              :task/category         {:db/valueType :db.type/ref}
              :category/todo         {:db/valueType :db.type/ref}
              :task/name             {:db/unique :db.unique/identity}
+             :category/name         {:db/unique :db.unique/identity}
              :todo/display-category {:db/valueType :db.type/ref}
              :todo/numbers          {:db/cardinality :db.cardinality/many}
              :action/editing        {:db/cardinality :db.cardinality/many}})
+
+
 
 (def conn (d/create-conn schema))
 
@@ -154,6 +157,8 @@
                 54)))
 
 (keys (:cache fulltree))
+(get (:cache fulltree) '[:filter-tx [:db :hux] [[_ #{:category/name}]]])
+;;(d/pull @conn '[*] [:task/name "jim"])
 
 (def conn3 (d/create-conn))
  
@@ -333,17 +338,34 @@
   
   (def poshtree (p/new-posh dcfg [:results]))
 
-  (def hux (p/add-db! poshtree :hux conn schema nil))
+  (def hux (p/add-db poshtree :hux conn schema nil))
 
-  (def pull1 (p/add-pull! hux '[*] 3))
+  (def pull1 (p/add-pull hux '[*] 3))
 
-  (def q1 (p/add-q! '[:find ?e
-                      :in $
-                      :where
-                      [?e :category/name _]]
-                    hux))
+  (def q1 (p/add-q '[:find ?e
+                     :in $
+                     :where
+                     [?e :category/name _]]
+                   filtq))
+
+  (def filtq (p/add-filter-q '[:find ?t
+                               :in $ ?cat
+                               :where
+                               [?t :task/category ?cat]]
+                             hux
+                             [:category/name "Hobby"]))
+
+  (def filtp (p/add-filter-pull hux
+                                '[{:task/_category [:task/name]}]
+                                [:category/name "Hobby"]))
 
 
+  (p/cache filtp)
+  
+  (db/poshdb->db @poshtree filtp)
+
+
+  (:pass-patterns (p/cache filtq))
   (p/results q1)
   (p/results pull1)
 

@@ -2,9 +2,11 @@
   (:require [posh.lib.datom-matcher :as dm]))
 
 (defn get-parent-db [poshdb]
-  (if (= (first poshdb) :db)
-    nil
-    (second poshdb)))
+  (case (first poshdb)
+    :db nil
+    :filter-tx (second poshdb)
+    :filter-pull (second poshdb)
+    :filter-q (first (nth poshdb 2))))
 
 (defn get-db-path [poshdb]
   (loop [path []

@@ -60,7 +60,7 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.5.2"]
+[posh "0.5.3"]
 ```
 
 Require in Reagent app files:
@@ -72,6 +72,9 @@ Require in Reagent app files:
 ```
 
 ###Important changes
+
+####0.5.3
+* added `filter-tx`, `filter-q`, and `filter-pull` to `posh.reagent`
 
 ####0.5.1
 * `get-else` now works with `q`, but still no `pull` in q.
@@ -189,6 +192,91 @@ someone's age changes or a young person's name changes:
 Currently, `pull` is not supported inside `q`. It is recommended to
 query for the eids, manually send them to components with a separate
 pull for each eid.
+
+### Filters
+
+Filters allow you to select a subset of the database to be accessed by
+queries. Filters can be faster because TX datoms must first pass
+through a filter before passing on to any queries that use that
+filter. However, the filters currently just use Datascript's `filter`
+function and lazily check each queried datom with a pattern matching
+predicate to see if it passes the filter, so in reality filters might
+just slow you down. In the future there will be an option to cache the
+filtered db, which should improve speed of reliant queries.
+
+Filters return a value that can be passed in to queries or other
+filters in place of the root `conn`. They should not be dereffed.
+
+#### filter-tx
+
+`filter-tx` takes a poshdb or conn and a list of tx-patterns. The
+resulting filtered db consists only of datoms that satisfy one of
+those patterns.
+
+The following filter would make a db of only task and category names.
+
+```clj
+(defn test-filter-tx [conn]
+  (let [filter0 (p/filter-tx conn '[[_ :task/name] [_ :category/name])]
+    [:div
+     [:p "filter-tx: "(pr-str filter0) (rand-int 999999)]
+     (pr-str @(p/q '[:find ?v
+                     :where
+                     [_ _ ?v]]
+                   filter0))]))
+```
+
+The `q` would return a list of all the task and category names.
+Because filter datom evaluation is currently lazy, the `q` query would have to
+check every single entity in the database to see if it passes the
+filter, and is thus not very efficient.
+
+#### filter-pull
+
+`filter-pull` creates a filtered db consisting of everything touched
+by the pull query. For example:
+
+```clj
+(p/filter-pull conn '[{:task/_category [:task/name]}]
+               [:category/name "Hobby"])
+```
+
+This would return a filtered db that consists of the name of every
+task belonging to the "Hobby" category.
+
+#### filter-q
+
+`filter-q` queries for entity id's and creates a filtered db
+consisting of those entities and all their attributes. Although `q`
+and `filter-q` can query from multiple db's/filters, the first
+argument after the `[:find ... :where...]` query is assumed to be the
+"parent" db.
+
+```clj
+(p/filter-q '[:find ?task ?cat
+              :in $ ?todo
+              :where
+              [?cat :category/todo ?todo]
+              [?task :task/category ?cat]]
+            conn
+            [:todo/name "Matt's List"])
+```
+
+The above would make a filtered db of all the category and task
+entities belonging to the todo list named "Matt's List".
+
+#### Combining filters
+
+You can call filters on filters:
+
+```clj
+(def hobby-tasks (p/filter-pull conn '[{:task/_category [:task/name]}]
+                                [:category/name "Hobby"]))
+(def hobby-task-names (p/filter-tx hobby-tasks '[[_ :task/name]]))
+```
+
+And soon-to-come you'll be able to use `filter-merge` on multiple
+filters to `or` them together.
 
 ### transact!
 

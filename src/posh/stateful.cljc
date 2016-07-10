@@ -28,6 +28,27 @@
       (:return (reset! posh-atom (apply (partial p/add-q @posh-atom query) args)))
       {:posh posh-atom})))
 
+
+;;;;;;;;; adding filters  ;;;;;;;;;;
+
+(defn add-filter-tx [poshdb tx-patterns]
+  (let [posh-atom (get-posh-atom poshdb)]
+    (with-meta
+      (:return (swap! posh-atom #(p/add-filter-tx % poshdb tx-patterns)))
+      {:posh posh-atom})))
+
+(defn add-filter-pull [poshdb pull-pattern eid]
+  (let [posh-atom (get-posh-atom poshdb)]
+    (with-meta
+      (:return (swap! posh-atom #(p/add-filter-pull % poshdb pull-pattern eid)))
+      {:posh posh-atom})))
+
+(defn add-filter-q [query & args]
+  (let [posh-atom (first (remove nil? (map get-posh-atom args)))]
+    (with-meta
+      (:return (swap! posh-atom #(apply p/add-filter-q % query args)))
+      {:posh posh-atom})))
+
 ;;;; removing item ;;;;
 
 (defn rm [posh-item]
@@ -49,9 +70,17 @@
 
 
 ;;;;;;;;;  get info from a query ;;;;;;;;;;;;;;;
+(defn cache [posh-query]
+  (get (:cache @(get-posh-atom posh-query)) posh-query))
 
 (defn results [posh-query]
   (:results (get (:cache @(get-posh-atom posh-query)) posh-query)))
+
+(defn reload-patterns [posh-query]
+  (:reload-patterns (get (:cache @(get-posh-atom posh-query)) posh-query)))
+
+(defn pass-patterns [posh-query]
+  (:pass-patterns (get (:cache @(get-posh-atom posh-query)) posh-query)))
 
 (defn datoms [posh-query]
   (:datoms (get (:cache @(get-posh-atom posh-query)) posh-query)))

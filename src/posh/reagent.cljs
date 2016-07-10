@@ -68,7 +68,9 @@
 
 (defn get-db [poshdb-or-conn]
   (if (d/conn? poshdb-or-conn)
-    [:db (get-conn-var poshdb-or-conn :db-id)]
+    (with-meta
+      [:db (get-conn-var poshdb-or-conn :db-id)]
+      {:posh (get-conn-var poshdb-or-conn :posh-atom)})
     poshdb-or-conn))
 
 (defn rm-posh-item [posh-atom storage-key]
@@ -136,6 +138,19 @@
   (apply q query args))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn filter-tx [poshdb tx-patterns]
+  (ps/add-filter-tx (get-db poshdb) tx-patterns))
+
+(defn filter-pull [poshdb pull-pattern eid]
+  (ps/add-filter-pull (get-db poshdb) pull-pattern eid))
+
+(defn filter-q [query & args]
+  (let [true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)]
+    (apply ps/add-filter-q query true-poshdb-args)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn transact! [conn txs]
   (d/transact! conn txs))
