@@ -53,7 +53,7 @@
            db (if with (:db-after ((:with dcfg) db with)) db)  ;; with tx-data
            db (if filter
                 ((:filter dcfg) db (if (symbol? filter)
-                                     (resolve filter)
+                                     #?(:clj (resolve filter) :cljs nil)
                                      filter))
                 db) ;; filter pred-sym
            ]

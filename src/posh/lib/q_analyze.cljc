@@ -487,19 +487,19 @@
         (d/q {:find (vec (:find qm))
               :in [[vars '...]]}
              (vec r))})
-     (when (some #{:patterns :filter-patterns} retrieve)
+     (when (some #{:patterns :filter-patterns :simple-patterns} retrieve)
        (let
            [in-vars      (get-input-sets (:in qm) args)
             eavs-ins    (map (fn [[db & eav]]
-                                (vec
-                                 (cons db
-                                       (map
-                                        #(if-let [v (in-vars %)]
-                                           (resolve-any-idents (:entid dcfg)
-                                                               (:db (get dbvarmap db))
-                                                               v)
-                                           %) eav))))
-                              eavs)
+                               (vec
+                                (cons db
+                                      (map
+                                       #(if-let [v (in-vars %)]
+                                          (resolve-any-idents (:entid dcfg)
+                                                              (:db (get dbvarmap db))
+                                                              v)
+                                          %) eav))))
+                             eavs)
             qvar-count   (count-qvars eavs-ins)
             linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
             rvars        (zipmap
@@ -509,7 +509,12 @@
                           #(if (and (qvar? %) (not (linked-qvars %))) '_ %)
                           eavs-ins)]
          (merge
+          (when (some #{:simple-patterns} retrieve)
+            {:patterns (patterns-from-eavs dbvarmap rvars
+                                           (clojure.walk/postwalk #(if (qvar? %) '_ %)
+                                                                  eavs-ins))})
           (when (some #{:patterns} retrieve)
-            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)})
+            {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
+             :linked   linked-qvars})
           (when (some #{:filter-patterns} retrieve)
             {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))

@@ -62,10 +62,11 @@
 
 ;; just adds tx to posh, call process-transact! to actually do them
 
+
 (defn transact [posh-item tx]
   (let [posh-atom (get-posh-atom posh-item)]
     (do
-      (reset! posh-atom (p/add-tx @posh-atom tx))
+      (reset! posh-atom (p/add-tx @posh-atom posh-item tx))
       true)))
 
 (defn transact-all! [posh-atom]

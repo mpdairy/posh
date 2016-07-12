@@ -40,7 +40,7 @@
 (defn update-q-with-dbvarmap [{:keys [dcfg retrieve] :as posh-tree} storage-key]
   "Returns {:dbvarmap .. :analysis ..}"
   (let [[_ query args] storage-key
-        retrieve       (concat [:results :patterns] retrieve)
+        retrieve       (concat [:results :simple-patterns] (remove #{:patterns} retrieve))
         qm             (merge {:in '[$]} (qa/query-to-map query))
         dbvarmap       (qa/make-dbarg-map (:in qm) args)
         poshdbs        (vals dbvarmap)

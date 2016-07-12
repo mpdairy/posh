@@ -240,7 +240,7 @@
                            54)
 
   (qa/q-analyze dcfg
-                [:results :patterns :datoms]
+                [:results :simple-patterns :datoms]
                 '[:find ?task ?task-name ?list-name ?todo-name
                   :in $ ?true [?owner-name ...]
                   :where
@@ -259,6 +259,19 @@
                   :schema (:schema @conn)
                   :key :hux}
                  true ["Matt" "Jim"]])
+
+  (qa/q-analyze dcfg
+                [:results :simple-patterns]
+                '[:find ?task ?task-name ?done
+                  :in $
+                  :where
+                  [?task :task/name ?task-name]
+                  [?task :task/done ?done]]
+                [{:conn conn
+                  :db   @conn
+                  :db-id :hux
+                  :schema (:schema @conn)
+                  :key :hux}])
 
   (qa/get-eavs '[[?p :person/name ?owner-name ?t]
                  [(> ?t 3423)]

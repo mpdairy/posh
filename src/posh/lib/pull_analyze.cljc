@@ -222,7 +222,8 @@
                  (map
                   #(tx-pattern-for-pull
                     schema
-                    (insert-dbid (remove-limits pull-pattern)) %)
+                    (insert-dbid (remove-limits pull-pattern)) %
+                    false)
                   affected-datoms)]
              (cons
               (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
