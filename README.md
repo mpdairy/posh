@@ -60,7 +60,7 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.5.3.1"]
+[posh "0.5.3.3"]
 ```
 
 Require in Reagent app files:
