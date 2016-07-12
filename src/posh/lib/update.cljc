@@ -54,9 +54,11 @@
                                    (or (get poshdbmap sym) arg))))
         analysis       (qa/q-analyze dcfg retrieve query fixed-args)]
     {:dbvarmap dbvarmap
-     :analysis (merge analysis
-                      {:reload-patterns (:patterns analysis)
-                       :reload-fn posh.lib.update/update-q})}))
+     :analysis (dissoc
+                (merge analysis
+                       {:reload-patterns (:patterns analysis)
+                        :reload-fn posh.lib.update/update-q})
+                :patterns)}))
 
 (defn update-q [posh-tree storage-key]
   ;;(println "updated q: " storage-key)

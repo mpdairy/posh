@@ -117,6 +117,14 @@
                          storage-key
                          #(p/add-pull % true-poshdb pull-pattern eid))))
 
+(defn pull-info [poshdb pull-pattern eid]
+  (let [true-poshdb (get-db poshdb)
+        storage-key [:pull true-poshdb pull-pattern eid]
+        posh-atom   (get-posh-atom poshdb)]
+    (dissoc
+     (u/update-pull @posh-atom storage-key)
+     :reload-fn)))
+
 (defn pull-tx [tx-patterns poshdb pull-pattern eid]
   (println "pull-tx is deprecated. Calling pull without your tx-patterns.")
   (pull poshdb pull-pattern eid))
@@ -132,6 +140,13 @@
                          storage-key
                          #(apply (partial p/add-q % query) true-poshdb-args))))
 
+(defn q-info [query & args]
+  (let [true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
+        posh-atom        (first (remove nil? (map get-posh-atom args)))
+        storage-key      [:q query true-poshdb-args]]
+    (dissoc
+     (u/update-q @posh-atom storage-key)
+     :reload-fn)))
 
 (defn q-tx [tx-patterns query & args]
   (println "q-tx is deprecated. Calling q without your tx-patterns.")
