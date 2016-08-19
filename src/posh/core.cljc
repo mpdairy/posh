@@ -31,34 +31,34 @@
    :schemas {}
    :txs {}
    :dbs {}
-   :filters {}
+   :filters {}})
    ;; {db-id {:filter pred :as-of t :with tx-data :since t}}
-   })
+
 
 (defn add-db
   ([posh-tree db-id conn schema] (add-db posh-tree db-id conn schema nil))
   ([{:keys [dcfg conns schemas dbs cache graph] :as posh-tree}
     db-id conn schema base-filters]
-     (let [storage-key [:db db-id]]
-       (merge
-        posh-tree
-        {:conns (assoc conns db-id conn)
-         :schemas (assoc schemas db-id schema)
-         :filters (assoc (:filters posh-tree) db-id base-filters)
-         :return storage-key
-         :dbs (assoc dbs db-id (db/generate-initial-db dcfg conn base-filters))
-         :cache (merge cache {storage-key {:pass-patterns [[]]}})
-         :graph (graph/add-item-full graph storage-key [] [])}))))
+   (let [storage-key [:db db-id]]
+     (merge
+      posh-tree
+      {:conns (assoc conns db-id conn)
+       :schemas (assoc schemas db-id schema)
+       :filters (assoc (:filters posh-tree) db-id base-filters)
+       :return storage-key
+       :dbs (assoc dbs db-id (db/generate-initial-db dcfg conn base-filters))
+       :cache (merge cache {storage-key {:pass-patterns [[]]}})
+       :graph (graph/add-item-full graph storage-key [] [])}))))
 
 (defn set-db
   ([posh-tree db-id db] (set-db posh-tree db-id db nil))
   ([{:keys [dbs graph cache] :as posh-tree} db-id db filter-pred]
-     (let [storage-key [:db db-id]]
-       (merge
-        posh-tree
-        {:dbs (assoc dbs db-id db)
-         :cache (merge cache {storage-key {:pass-patterns [[]]}})
-         :graph (graph/add-item-full graph storage-key [] [])}))))
+   (let [storage-key [:db db-id]]
+     (merge
+      posh-tree
+      {:dbs (assoc dbs db-id db)
+       :cache (merge cache {storage-key {:pass-patterns [[]]}})
+       :graph (graph/add-item-full graph storage-key [] [])}))))
 
 (defn add-filter-tx [{:keys [cache graph] :as posh-tree} poshdb tx-patterns]
   (let [storage-key [:filter-tx poshdb tx-patterns]
