@@ -27,11 +27,16 @@
                  (fn [var]
                    (when (keyword? var)
                      (get posh-vars var))))
+      (add-watch conn :posh-schema-listener
+                 (fn [key ref old-state new-state]
+                   (when (not= (:schema old-state) (:schema new-state))
+                     (swap! posh-atom assoc-in [:schema db-id] (:schema new-state)))))
+                     ;; Update posh conn
       (d/listen! conn :posh-listener
                  (fn [tx-report]
                    ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
                    (let [{:keys [ratoms changed]}
-                         (reset! posh-atom (p/after-transact @posh-atom {conn tx-report}))]
+                         (swap! posh-atom p/after-transact {conn tx-report})]
                      (doseq [[k v] changed]
                        (reset! (get ratoms k) (:results v))))))
       conn)))
@@ -173,3 +178,4 @@
      poshdb-or-conn
      (ps/poshdb->conn poshdb-or-conn))
    txs))
+
