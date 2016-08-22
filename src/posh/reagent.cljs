@@ -85,42 +85,52 @@
              :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
              :reactions (dissoc (:reactions posh-atom-val) storage-key)))))
 
-(defn make-query-reaction [posh-atom storage-key add-query-fn]
-  (if-let [r (get (:reactions @posh-atom) storage-key)]
-      r
-      (->
+(defn make-query-reaction
+  ([posh-atom storage-key add-query-fn options]
+   (if-let [r (get (:reactions @posh-atom) storage-key)]
+     r
+     (->
        (swap!
-        posh-atom
-        (fn [posh-atom-val]
-          (let [posh-atom-with-query (add-query-fn posh-atom-val)
-                query-result         (:results (get (:cache posh-atom-with-query) storage-key))
-                query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
-                                         (r/atom query-result))
-                query-reaction       (ra/make-reaction
-                                      (fn []
-                                        ;;(println "RENDERING: " storage-key)
-                                        @query-ratom)
-                                      :on-dispose
-                                      (fn [_ _]
-                                        ;;(println "no DISPOSING: " storage-key)
-                                        (swap! posh-atom
-                                               (fn [posh-atom-val]
-                                                 (assoc (p/remove-item posh-atom-val storage-key)
-                                                   :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
-                                                   :reactions (dissoc (:reactions posh-atom-val) storage-key))))))]
-            (assoc posh-atom-with-query
-              :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
-              :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction)))))
+         posh-atom
+         (fn [posh-atom-val]
+           (let [posh-atom-with-query (add-query-fn posh-atom-val)
+                 query-result         (:results (get (:cache posh-atom-with-query) storage-key))
+                 query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
+                                          (r/atom query-result))
+                 query-reaction       (ra/make-reaction
+                                        (fn []
+                                          ;;(println "RENDERING: " storage-key)
+                                          @query-ratom)
+                                        :on-dispose
+                                        (fn [_ _]
+                                          ;;(println "no DISPOSING: " storage-key)
+                                          (when-not (= (:cache options) :forever)
+                                            (swap! posh-atom
+                                                   (fn [posh-atom-val]
+                                                     (assoc (p/remove-item posh-atom-val storage-key)
+                                                       :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
+                                                       :reactions (dissoc (:reactions posh-atom-val) storage-key)))))))]
+             (assoc posh-atom-with-query
+               :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
+               :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction)))))
        :reactions
        (get storage-key))))
+  ([posh-atom storage-key add-query-fn]
+   (make-query-reaction posh-atom storage-key add-query-fn {})))
 
-(defn pull [poshdb pull-pattern eid]
-  (let [true-poshdb (get-db poshdb)
-        storage-key [:pull true-poshdb pull-pattern eid]
-        posh-atom   (get-posh-atom poshdb)]
-    (make-query-reaction posh-atom
-                         storage-key
-                         #(p/add-pull % true-poshdb pull-pattern eid))))
+(defn pull
+  "Returns a reaction of a pull expression. The options argument may specify `:cache :forever`, which keeps query results
+  cached indefinitely, even if the reaction is disposed."
+  ([poshdb pull-pattern eid options]
+   (let [true-poshdb (get-db poshdb)
+         storage-key [:pull true-poshdb pull-pattern eid]
+         posh-atom   (get-posh-atom poshdb)]
+     (make-query-reaction posh-atom
+                          storage-key
+                          #(p/add-pull % true-poshdb pull-pattern eid)
+                          options)))
+  ([poshdb pull-pattern eid]
+   (pull poshdb pull-pattern eid {})))
 
 (defn pull-info [poshdb pull-pattern eid]
   (let [true-poshdb (get-db poshdb)
@@ -137,13 +147,47 @@
 ;;; q needs to find the posh-atom, go through args and convert any
 ;;; conn's to true-poshdb's, generate the storage-key with true dbs
 
-(defn q [query & args]
-  (let [true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
+(defn parse-q-query
+  [query]
+  (first
+    (reduce
+      (fn [[parsed-query last-key] query-item]
+        (if (keyword? query-item)
+          [(assoc parsed-query query-item [])
+           query-item]
+          (do
+            (assert last-key)
+            [(update parsed-query last-key conj query-item)
+             last-key])))
+      [{} nil]
+      query)))
+
+(defn q-args-count
+  ;; Really should be conforming to a spec for this... :-/
+  [query]
+  (let [parsed-query (parse-q-query query)]
+    (if-let [in-clause (:in parsed-query)]
+      (count in-clause)
+      1)))
+
+(defn q
+  "Returns a datalog query reaction. If args count doens't match the query's input count, a final options map argument
+  is accepted. This options map may specify `:cache :forever`, which keeps query results cached even if the reaction is
+  disposed."
+  [query & args]
+  (let [n-query-args     (q-args-count query)
+        [args options]   (cond
+                           (= n-query-args (count args))
+                           [args {}]
+                           (= n-query-args (inc (count args)))
+                           [(butlast args) (last args)])
+        true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
         posh-atom        (first (remove nil? (map get-posh-atom args)))
         storage-key      [:q query true-poshdb-args]]
     (make-query-reaction posh-atom
                          storage-key
-                         #(apply (partial p/add-q % query) true-poshdb-args))))
+                         #(apply (partial p/add-q % query) true-poshdb-args)
+                         options)))
 
 (defn q-info [query & args]
   (let [true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
