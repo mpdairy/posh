@@ -21,7 +21,7 @@
 
    (vector? pull-pattern)
    (->> (dbid-into-vec pull-pattern)
-        (map #(if (coll? %) (insert-dbid %) % ))
+        (map #(if (coll? %) (insert-dbid %) %))
         vec)
 
    :else pull-pattern))
@@ -112,8 +112,8 @@
 
   (defn combine-patterns [patterns]
     (let [avs (reducible-patterns (count-avs patterns))
-          eas (reducible-patterns (count-eas patterns))]
-      )))
+          eas (reducible-patterns (count-eas patterns))])))
+
 
 (defn limit-spec? [x]
   (and (seq? x) (#{'limit "limit"} (first x))))
@@ -160,6 +160,7 @@
                      (tx-pattern-for-pull schema ref-pull (ref-key affected-pull refs-only?))))))
                pull-maps)))))
 
+
 ;; retrieve :datoms, :patterns, or :results
 ;; db should be {:db db :schema schema :db-id db-id}
 (defn pull-analyze [dcfg retrieve {:keys [db db-id schema]} pull-pattern ent-id]
@@ -183,11 +184,14 @@
               {:patterns
                {db-id
                 (dm/reduce-patterns
-                 (tx-pattern-for-pull
-                  schema
-                  prepped-pull-pattern
-                  affected-datoms
-                  false))}})
+                  (concat
+                    (when (vector? ent-id)
+                      [['_ (first ent-id) (second ent-id)]])
+                    (tx-pattern-for-pull
+                     schema
+                     prepped-pull-pattern
+                     affected-datoms
+                     false)))}})
             (when (some #{:ref-patterns} retrieve)
               {:ref-patterns
                {db-id
@@ -228,6 +232,6 @@
              (cons
               (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
               (mapcat rest patterns))
-             (dm/reduce-patterns (apply concat patterns))
-             )}})))))
+             (dm/reduce-patterns (apply concat patterns)))}})))))
+
 
