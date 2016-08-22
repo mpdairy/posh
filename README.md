@@ -60,7 +60,7 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.5.3.3"]
+[posh "0.5.4"]
 ```
 
 Require in Reagent app files:
@@ -72,6 +72,11 @@ Require in Reagent app files:
 ```
 
 ###Important changes
+
+####0.5.4
+* added option fields to `q` and `pull`. Currently the only option is
+`:cache :forever`, which will keep the query results caches forever,
+even after the component using that query is un-rendered. (Thanks, [metasoarous](https://github.com/metasoarous))
 
 ####0.5.3
 * added `filter-tx`, `filter-q`, and `filter-pull` to `posh.reagent`
