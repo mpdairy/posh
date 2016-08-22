@@ -8,9 +8,27 @@
             [reagent.core :as r]
             [reagent.ratom :as ra]))
 
+(defn missing-pull-result
+  [pull-expr]
+  (when (some #{:db/id} pull-expr)
+    {:db/id nil}))
+
+(defn safe-pull
+  [db query id]
+  (cond
+    (integer? id)
+    (d/pull db query id)
+    (vector? id)
+    (if-let [eid (d/entid db id)]
+      (d/pull db query eid)
+      (missing-pull-result query))
+    (nil? id)
+    (missing-pull-result query)))
+
+
 (def dcfg
   {:db d/db
-   :pull d/pull
+   :pull safe-pull
    :q d/q
    :filter d/filter
    :with d/with
