@@ -127,8 +127,8 @@
    (mapcat (fn [r] (let [vs (zipmap vars r)]
                     (map (fn [eav]
                            (vec (map #(if (qvar? %) (get vs %) %) eav)))
-                         eavs)
-                    )) results)))
+                         eavs)))
+           results)))
 
 ;;; q pattern gen ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -457,13 +457,18 @@
         eavs         (get-eavs where)
         vars         (vec (get-all-vars eavs))
         newqm        (merge qm {:find vars :where where})
-        newq         (qm-to-query newqm)
+        ;; This doesn't seem to be getting used anymore
+        ;newq         (qm-to-query newqm)
         dbvarmap     (make-dbarg-map (:in qm) args)
         fixed-args   (->> (zipmap (:in qm) args)
                           (map (fn [[sym arg]]
                                  (or (:db (get dbvarmap sym)) arg))))
-        r            (apply (partial (:q dcfg) newqm) fixed-args)]
-    (merge
+        r            (apply (partial (:q dcfg) newqm) fixed-args)
+        lookup-ref-patterns
+        (-> args
+            ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
+            (filter (every-pred vector? (comp keyword? first) (comp (partial = 1) count)))
+            (map (fn [[a v]] ['_ a v])))]
      (when (some #{:datoms :datoms-t} retrieve)
        (let [datoms (split-datoms (create-q-datoms r eavs vars))]
          (merge
@@ -510,11 +515,13 @@
                           eavs-ins)]
          (merge
           (when (some #{:simple-patterns} retrieve)
-            {:patterns (patterns-from-eavs dbvarmap rvars
-                                           (clojure.walk/postwalk #(if (qvar? %) '_ %)
-                                                                  eavs-ins))})
+            {:patterns (concat
+                         lookup-ref-patterns
+                         (patterns-from-eavs dbvarmap rvars
+                                             (clojure.walk/postwalk #(if (qvar? %) '_ %)
+                                                                    eavs-ins)))})
           (when (some #{:patterns} retrieve)
             {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
              :linked   linked-qvars})
           (when (some #{:filter-patterns} retrieve)
-            {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))
+            {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
