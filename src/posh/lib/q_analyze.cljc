@@ -467,7 +467,7 @@
         lookup-ref-patterns
         (-> args
             ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
-            (filter (every-pred vector? (comp keyword? first) (comp (partial = 1) count)))
+            (filter (every-pred vector? (comp keyword? first) (comp (partial = 2) count)))
             (map (fn [[a v]] ['_ a v])))]
      (when (some #{:datoms :datoms-t} retrieve)
        (let [datoms (split-datoms (create-q-datoms r eavs vars))]
