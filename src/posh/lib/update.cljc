@@ -43,7 +43,8 @@
         retrieve       (concat [:results :simple-patterns] (remove #{:patterns} retrieve))
         qm             (merge {:in '[$]} (qa/query-to-map query))
         dbvarmap       (qa/make-dbarg-map (:in qm) args)
-        poshdbs        (vals dbvarmap)
+        ;; no longer using
+        ;poshdbs        (vals dbvarmap)
         poshdbmap      (->> dbvarmap
                             (map (fn [[db-sym poshdb]]
                                    {db-sym
@@ -86,3 +87,4 @@
     :pull (update-pull posh-tree storage-key)
     :q    (:analysis (update-q posh-tree storage-key))
     :filter-pull (update-filter-pull posh-tree storage-key)))
+

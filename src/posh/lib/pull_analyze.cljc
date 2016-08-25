@@ -1,6 +1,5 @@
 (ns posh.lib.pull-analyze
   (:require [posh.lib.util :as util]
-            [taoensso.timbre :as log]
             [posh.lib.datom-matcher :as dm]))
 
 (defn reverse-lookup? [attr]
