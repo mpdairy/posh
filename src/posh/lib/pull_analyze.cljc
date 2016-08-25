@@ -164,7 +164,7 @@
 ;; retrieve :datoms, :patterns, or :results
 ;; db should be {:db db :schema schema :db-id db-id}
 (defn pull-analyze [dcfg retrieve {:keys [db db-id schema]} pull-pattern ent-id]
-  (when-not (empty? retrieve)
+  (when (and ent-id (seq retrieve))
     (let [affected-datoms
           (pull-affected-datoms (:pull dcfg) db pull-pattern ((:entid dcfg) db ent-id))]
       (merge

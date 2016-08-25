@@ -46,7 +46,7 @@
                    (when (keyword? var)
                      (get posh-vars var))))
       (add-watch conn :posh-schema-listener
-                 (fn [key ref old-state new-state]
+                 (fn [_ _ old-state new-state]
                    (when (not= (:schema old-state) (:schema new-state))
                      (swap! posh-atom assoc-in [:schema db-id] (:schema new-state)))))
                      ;; Update posh conn
@@ -105,7 +105,7 @@
 
 (defn make-query-reaction
   ([posh-atom storage-key add-query-fn options]
-   (if-let [r (get (:reactions @posh-atom) storage-key)]
+   (if-let [r (get-in @posh-atom [:reactions storage-key])]
      r
      (->
        (swap!
@@ -197,8 +197,10 @@
         [args options]   (cond
                            (= n-query-args (count args))
                            [args {}]
-                           (= n-query-args (inc (count args)))
-                           [(butlast args) (last args)])
+                           (= (inc n-query-args) (count args))
+                           [(butlast args) (last args)]
+                           :else
+                           (throw "Incorrect number of args passed to posh query"))
         true-poshdb-args (map #(if (d/conn? %) (get-db %) %) args)
         posh-atom        (first (remove nil? (map get-posh-atom args)))
         storage-key      [:q query true-poshdb-args]]

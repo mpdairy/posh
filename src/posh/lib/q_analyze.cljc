@@ -127,8 +127,8 @@
    (mapcat (fn [r] (let [vs (zipmap vars r)]
                     (map (fn [eav]
                            (vec (map #(if (qvar? %) (get vs %) %) eav)))
-                         eavs)
-                    )) results)))
+                         eavs)))
+           results)))
 
 ;;; q pattern gen ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -457,12 +457,18 @@
         eavs         (get-eavs where)
         vars         (vec (get-all-vars eavs))
         newqm        (merge qm {:find vars :where where})
-        newq         (qm-to-query newqm)
+        ;; This doesn't seem to be getting used anymore
+        ;newq         (qm-to-query newqm)
         dbvarmap     (make-dbarg-map (:in qm) args)
         fixed-args   (->> (zipmap (:in qm) args)
                           (map (fn [[sym arg]]
                                  (or (:db (get dbvarmap sym)) arg))))
-        r            (apply (partial (:q dcfg) newqm) fixed-args)]
+        r            (apply (partial (:q dcfg) newqm) fixed-args)
+        lookup-ref-patterns
+        (->> args
+            ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
+            (filter (every-pred vector? (comp keyword? first) (comp (partial = 2) count)))
+            (map (fn [[a v]] ['$ '_ a v])))]
     (merge
      (when (some #{:datoms :datoms-t} retrieve)
        (let [datoms (split-datoms (create-q-datoms r eavs vars))]
@@ -499,7 +505,7 @@
                                                               (:db (get dbvarmap db))
                                                               v)
                                           %) eav))))
-                             eavs)
+                             (concat lookup-ref-patterns eavs))
             qvar-count   (count-qvars eavs-ins)
             linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
             rvars        (zipmap
@@ -510,9 +516,10 @@
                           eavs-ins)]
          (merge
           (when (some #{:simple-patterns} retrieve)
-            {:patterns (patterns-from-eavs dbvarmap rvars
-                                           (clojure.walk/postwalk #(if (qvar? %) '_ %)
-                                                                  eavs-ins))})
+            {:patterns 
+             (patterns-from-eavs dbvarmap rvars
+                                 (clojure.walk/postwalk #(if (qvar? %) '_ %)
+                                                        eavs-ins))})
           (when (some #{:patterns} retrieve)
             {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
              :linked   linked-qvars})
