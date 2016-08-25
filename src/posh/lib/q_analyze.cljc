@@ -465,10 +465,11 @@
                                  (or (:db (get dbvarmap sym)) arg))))
         r            (apply (partial (:q dcfg) newqm) fixed-args)
         lookup-ref-patterns
-        (-> args
+        (->> args
             ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
             (filter (every-pred vector? (comp keyword? first) (comp (partial = 2) count)))
-            (map (fn [[a v]] ['_ a v])))]
+            (map (fn [[a v]] ['$ '_ a v])))]
+    (merge
      (when (some #{:datoms :datoms-t} retrieve)
        (let [datoms (split-datoms (create-q-datoms r eavs vars))]
          (merge
@@ -504,7 +505,7 @@
                                                               (:db (get dbvarmap db))
                                                               v)
                                           %) eav))))
-                             eavs)
+                             (concat lookup-ref-patterns eavs))
             qvar-count   (count-qvars eavs-ins)
             linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))
             rvars        (zipmap
@@ -515,13 +516,12 @@
                           eavs-ins)]
          (merge
           (when (some #{:simple-patterns} retrieve)
-            {:patterns (concat
-                         lookup-ref-patterns
-                         (patterns-from-eavs dbvarmap rvars
-                                             (clojure.walk/postwalk #(if (qvar? %) '_ %)
-                                                                    eavs-ins)))})
+            {:patterns 
+             (patterns-from-eavs dbvarmap rvars
+                                 (clojure.walk/postwalk #(if (qvar? %) '_ %)
+                                                        eavs-ins))})
           (when (some #{:patterns} retrieve)
             {:patterns (patterns-from-eavs dbvarmap rvars prepped-eavs)
              :linked   linked-qvars})
           (when (some #{:filter-patterns} retrieve)
-            {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)}))))))
+            {:filter-patterns (filter-patterns-from-eavs dbvarmap rvars prepped-eavs)})))))))
