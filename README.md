@@ -1,14 +1,19 @@
 # Posh
 
 Posh is a ClojureScript / React library that lets you use a single
-[DataScript](https://github.com/tonsky/datascript/) database to store your app state. Components access the
+[DataScript](https://github.com/tonsky/datascript/) database to store
+your app state. Components access the
 data they need to render by calling DataScript queries with `q` or
 `pull` and are only updated when the query changes. `transact!` is
 used within components to change the global state. If you are familiar
 with Datomic, you will find Posh incredibly easy to use. If not, it's
 worth learning because of the power and versatility it will give your components.
 
-Posh uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
+Posh is now self-contained and can be used with multiple front-ends
+(see `posh.core`), such as Reagent, Rum, or Quiescent. Only
+Reagent is currently well-supported by Posh, and is the focus of this documentation.
+
+`posh.reagent` uses [Reagent](https://github.com/reagent-project/reagent) and can be integrated with your current Reagent
 project. Because it uses a single database to store app state, like [Om](https://github.com/omcljs/om) or [re-frame](https://github.com/Day8/re-frame), it is fitting to write
 large, extensible apps and reusable components, with the added
 benefit of being much simpler to use and having a more expressive data
@@ -30,38 +35,81 @@ database changed an attribute of the `person-id` entity:
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
 ```
-## Examples
+## Resources
+
+Posh chat room on Gitter: https://gitter.im/mpdairy/posh
+
+I am also currently looking for contract work or employment on a
+project that uses Posh.
+
+### Examples:
 
 [Posh Todo List](https://github.com/mpdairy/posh-todo) - A todo list
 with categories, edit boxes, checkboxes, and multi-stage delete
 buttons ([trashy live demo](http://otherway.org/posh-todo/)).
+
+### Projects Using Posh:
+* [Zetawar](http://www.zetawar.com/) "A highly customizable, open
+  source, turn-based, tactical strategy web game written in
+  ClojureScript."
+* [Datsys](https://github.com/metasoarous/datsys) A web framework.
+
 
 ## Usage
 
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.3.3.1"]
-[datascript "0.13.3"]
+[posh "0.5.5"]
 ```
+
 Require in Reagent app files:
 ```clj
 (ns example
   (:require [reagent.core :as r]
-            [posh.core :refer [pull q db-tx pull-tx q-tx after-tx! before-tx! transact! posh!]]
+            [posh.reagent :refer [pull q posh!]]
             [datascript.core :as d]))
 ```
 
+###Important changes
+
+####0.5.4
+* added option fields to `q` and `pull`. Currently the only option is
+`:cache :forever`, which will keep the query results caches forever,
+even after the component using that query is un-rendered. (Thanks, [metasoarous](https://github.com/metasoarous))
+
+####0.5.3
+* added `filter-tx`, `filter-q`, and `filter-pull` to `posh.reagent`
+
+####0.5.1
+* `get-else` now works with `q`, but still no `pull` in q.
+* `q` with no `:in` args now works properly
+
+####0.5
+* You must require `posh.reagent` in your ns's instead of `posh.core`.
+  This is because Posh 0.5's core is now front-end agnostic and
+  Reagent is just one of the front-ends it will work with (Rum and
+  Quiescent soon to come!)
+* Previously, Posh's `q` took the `conn` as the first argument. Now,
+  the `conn` is placed behind the query, in the args, as in DataScript
+  or Datomic's `q`.
+* db-tx, pull-tx, and q-tx are now deprecated. The tx-patterns generated
+  for `pull` are exact and for `q` are pretty thorough.
+* `q` with `get-else` and `pull` do not currently work in 0.5, though
+  they sort-of worked in the older version. If you need to use those,
+  just keep using the older version until those expressions are
+  supported.
+  
 ## Overview
 
-Posh gives you three functions to retrieve data from the database from
-within Reagent components: `pull`, `q`, and `db-tx`. They watch the
+Posh gives you two functions to retrieve data from the database from
+within Reagent components: `pull` and `q`. They watch the
 database's transaction report and only update (re-render) the hosting
 component when one of the transacted datoms affects the requested data.
 
 ### posh!
 
-`(posh! [DataScript conn])`
+`(posh! [DataScript conn1] ...)`
 
 Sets up the tx-report listener for a conn.
 
@@ -70,8 +118,13 @@ Sets up the tx-report listener for a conn.
 
 (posh! conn)
 ```
-You can do it for multiple conn's, though I can't imagine a good use case
-for that.
+
+New in Posh 0.5, you can `posh!` multiple conns together if you intend
+to ever use them together in a `q` query:
+
+```clj
+(posh! conn users-conn styles-conn)
+```
 
 ### pull
 
@@ -87,7 +140,7 @@ Posh's `pull` operates just like Datomic / Datascript's `pull` except it takes a
 [Datomic's pull](http://docs.datomic.com/pull.html))
 
 Posh's `pull` only attempts to pull any new data if there has been a
-transaction of any datoms that might have changed the data it is
+transaction of any datoms that have changed the data it is
 looking at. For example:
 
 ```clj
@@ -107,179 +160,147 @@ whenever `id` is updated and increases its age whenever clicked:
      {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
      (:person/name p) ": " (:person/age p)]))
 ```
-
-If you would like to fine-tune when `pull` actually attempts to pull
-new data, you can use `pull-tx`:
-
-`(pull-tx [conn] [tx pattern] [pull pattern] [entity id])`
-
-Where `tx-pattern` is a datom matching pattern for the transaction
-queue. See the pattern-matching section below.
-
 ### q
 
-`(q [conn] [query] & args)`
+`(q [query] & args)`
 
-`q` queries for data from the database according to the rules
+`q` queries for data from the database according to the datalog rules
 specified in the query. It must be called within a Reagent component
 and will only update the component whenever the data it is querying
 has changed. See
 [Datomic's Queries and Rules](http://docs.datomic.com/query.html) for
-how to do datalog queries. `args` are optional extra variables that DataScript's `q` looks for
+how to do datalog queries. `args` are extra variables, including the
+conn or conns from which you will be querying, that DataScript's `q` looks for
 after the `[:find ...]` query if the query has an `:in` specification.
-By default, the database at the time of the latest transaction is implicitly
-passed in as the first arg, which will correspond with `$` in the
-`:in` clause.
+Note that Posh's `q` takes conns rather than dbs.
 
 Whenever the database has changed, `q` will check the transacted
 datoms to see if anything relevant to its query has occured. If so,
 `q` runs Datascript's `q` and compares the new query to the old. If it
 is different, the hosting component will update with the new data.
 
-Posh's `q` looks at the query pattern and tries to make a pattern to
-identify relevant tx datoms. If there is anything complex in the
-query, such as function calls or `get-else`, it will have a
-non-restrictive pattern and will run the query whenever there has been
-a database change. To specify the matching pattern by hand, you can
-use `q-tx`:
-
-`(q-tx [conn] [tx pattern] [query] & args)`
-
-`q-tx` takes a `tx pattern` as its second argument (see the Pattern
-Matching section below).
-
 Below is an example of a component that shows a list of people's names
-who are younger than a certain age. It only attempts the query when
-someone's age changes:
+who are younger than a certain age. It only attempts to re-query when
+someone's age changes or a young person's name changes:
 
 ```clj
-(defn people-younger-than [old-age]
-  (let [young @(q-tx conn [['_ :person/age]] '[:find [?name ...]
-                                               :in $ ?old
-                                               :where
-                                               [?p :person/age ?age]
-                                               [(< ?age ?old)]
-                                               [?p :person/name ?name]]
-                     old-age)]
-    [:ul "People younger than 30:"
-     (for [n young] ^{:key n} [:li n])]))
-```
-
-Or, if you called the same query with just `q`:
-```clj
-(q conn '[:find [?name ...]
-          :in $ ?old
-          :where
-          [?p :person/age ?age]
-          [(< ?age ?old)]
-          [?p :person/name ?name]]
+(q '[:find [?name ...]
+     :in $ ?old
+     :where
+     [?p :person/age ?age]
+     [(< ?age ?old)]
+     [?p :person/name ?name]]
+   conn
    old-age)
 ```
-In this case, `q` would run the query every time there is a
-transaction in the database because one of the clauses is a function
-call `(< ?age ?old)`.
 
-An example of a simple call would be:
+Currently, `pull` is not supported inside `q`. It is recommended to
+query for the eids, manually send them to components with a separate
+pull for each eid.
 
-```clj
-(q conn '[:find [?name ...]
-          :in $ ?age
-          :where
-          [?p :person/age ?age]
-          [?p :person/name ?name]]
-   age)
-```
-This finds the name of every person whose `:person/age` is `age`. It
-will re-query whenever anyone's `:person/age` changes to or from `age`
-or whenever anybody's `:person/name` changes. 
+### Filters
 
+Filters allow you to select a subset of the database to be accessed by
+queries. Filters can be faster because TX datoms must first pass
+through a filter before passing on to any queries that use that
+filter. However, the filters currently just use Datascript's `filter`
+function and lazily check each queried datom with a pattern matching
+predicate to see if it passes the filter, so in reality filters might
+just slow you down. In the future there will be an option to cache the
+filtered db, which should improve speed of reliant queries.
 
-### db-tx
+Filters return a value that can be passed in to queries or other
+filters in place of the root `conn`. They should not be dereffed.
 
-`(db-tx [conn] [tx pattern])`
+#### filter-tx
 
-`db-tx` listens to the tx report queue and returns the value of the
-database after a match. The hosting Reagent component won't update
-with a new db until there is a pattern match.
+`filter-tx` takes a poshdb or conn and a list of tx-patterns. The
+resulting filtered db consists only of datoms that satisfy one of
+those patterns.
 
-It is generally recommended that you use `pull`s and `q`s for any
-components instead of `db-tx`. If you do use `db-tx`, it is
-very important to provide thorough tx pattern matching rules to
-restrict the component from re-rendering each time the db changes.
-
-This example displays a list of people who are ten years old. The
-component will only update when someone's age is set to 10 or changed
-from 10 (retracted).
+The following filter would make a db of only task and category names.
 
 ```clj
-(defn ten-year-olds []
-  (let [db   @(db-tx conn '[[_ :person/age 10]])
-        kids (map (partial d/entity db)
-                  (d/q '[:find [?p ...] :where
-                         [?p :person/age ?a]
-                         [(= ?a 10)]]
-                       db))]
-    [:ul "These kids are ten years old:"
-     (for [k kids]
-       ^{:key (:db/id k)} [:li (:person/name k)])]))
-```
-(Note: the above component should have just used posh's `q`)
-
-The example below displays a person and increases its own age
-whenever clicked. It only re-renders when a datom with its own
-entity id is transacted.
-
-```clj
-(defn person [id]
-  (let [db @(db-tx conn [[id]])
-        p  (d/entity db id)]
+(defn test-filter-tx [conn]
+  (let [filter0 (p/filter-tx conn '[[_ :task/name] [_ :category/name])]
     [:div
-     {:on-click #(transact! conn [[:db/add id :person/age (inc (:person/age p))]])}
-     (:person/name p) " -- " (:person/age p)]))
+     [:p "filter-tx: "(pr-str filter0) (rand-int 999999)]
+     (pr-str @(p/q '[:find ?v
+                     :where
+                     [_ _ ?v]]
+                   filter0))]))
 ```
 
-(Note: the above component should have just used posh's `pull`)
+The `q` would return a list of all the task and category names.
+Because filter datom evaluation is currently lazy, the `q` query would have to
+check every single entity in the database to see if it passes the
+filter, and is thus not very efficient.
 
-### after-tx!
+#### filter-pull
 
-`(after-tx! conn [tx patterns] handler-fn)`
-
-`after-tx!` sets up a listener that watches for a transaction pattern match, then
-calls `(handler-fn matching-tx-datom db-after)`.
+`filter-pull` creates a filtered db consisting of everything touched
+by the pull query. For example:
 
 ```clj
-;; congratulates any one who turns 21
-(after-tx! conn
-          '[[_ :person/age 21 _ true]]
-          (fn [[e a v] db]
-            (js/alert (str "You have come of age, "
-                           (:person/name (d/entity db e)) "."))))
+(p/filter-pull conn '[{:task/_category [:task/name]}]
+               [:category/name "Hobby"])
 ```
 
-You could use `after-tx!` to handle events or to trigger communication
-with the server.
+This would return a filtered db that consists of the name of every
+task belonging to the "Hobby" category.
 
-### before-tx!
+#### filter-q
 
-`(before-tx! conn [tx patterns] handler-fn)`
+`filter-q` queries for entity id's and creates a filtered db
+consisting of those entities and all their attributes. Although `q`
+and `filter-q` can query from multiple db's/filters, the first
+argument after the `[:find ... :where...]` query is assumed to be the
+"parent" db.
 
-`before-tx!` is like `after-tx!` except it reads the transactions
-before they are committed to the database. Any calls to Posh's
-`transact!` (below) from within the `handler-fn` will be appended to the
-transaction batch and will not pass through any listeners created with
-`before-tx!`.
+```clj
+(p/filter-q '[:find ?task ?cat
+              :in $ ?todo
+              :where
+              [?cat :category/todo ?todo]
+              [?task :task/category ?cat]]
+            conn
+            [:todo/name "Matt's List"])
+```
+
+The above would make a filtered db of all the category and task
+entities belonging to the todo list named "Matt's List".
+
+#### Combining filters
+
+You can call filters on filters:
+
+```clj
+(def hobby-tasks (p/filter-pull conn '[{:task/_category [:task/name]}]
+                                [:category/name "Hobby"]))
+(def hobby-task-names (p/filter-tx hobby-tasks '[[_ :task/name]]))
+```
+
+And soon-to-come you'll be able to use `filter-merge` on multiple
+filters to `or` them together.
 
 ### transact!
 
-`transact!` operates just like DataScript's `transact!`:
+`posh.reagent`'s `transact!` takes a conn or a posh filter and
+transacts to the conn or the root conn of the filter.
 
-```
+```clj
 (transact! conn [[:db/add 123 :person/name "Jim"]])
 ```
 
-Except Posh's `transact!` buffers its transactions in 1/60 second intervals, passes them
-through any handlers set up in `before-tx!`, then batch transacts
-them to the database.
+### posh-atom
+
+`(get-posh-atom conn)`
+
+The cache of all the queries is stored inside the posh-atom, which is
+pointed to by the conn. If you want to see or edit things "under the
+hood", this is where to go. The dereffed posh-atom can be used as the
+`posh-tree` in the functions in `posh.core`. A wiki will
+one day explain further.
 
 ## Advanced Examples
 
@@ -333,328 +354,20 @@ This can be called with any entity and its text attrib, like
 `[editable-label conn 123 :person/name]` or
 `[editable-label conn 432 :category/title]`.
 
-## Pattern Matching
-
-The datom pattern matcher is used to find if any pertinant datoms have
-been transacted in the database. If you stick to just using `q` and `pull`,
-you probably won't need to do any pattern matching, but you might want it for
-`after-tx!` and most certainly you'll want it if you use `db-tx`.
-
-The pattern can either be a list of patterns or a tuple of a list of patterns and a query.
-
-To play around with the datom matcher:
-
-```clj
-(use 'posh.datom-match)
-
-;;;(datom-match? db patterns datom)
-
-> (datom-match? (d/db conn) '[[_ :age 34]] [123 :age 5])
-nil
-
-```
-Note, if the pattern match is true, it will return a map that contains
-any variables that might have been bound in the match, or just an
-empty map if there are no variables.
-
-```clj
-> (datom-match? (d/db conn) '[[?p [:name :age]]] [123 :name "jim"])
-{?p 123}
-```
-
-### Datom Matching
-
-Here are examples of all the ways patterns can match. The
-examples use `db-tx`, though `pull-tx`, `q-tx`, `after-tx!`, and
-`before-tx!` use the same pattern matching.
-
-```clj
-
-  ;; The matcher takes a list of possible patterns
-  ;; each pattern is tried until one is true
-
-  ;; a pattern can be shorter than the tx report datom
-  ;; everything after the pattern ends is assumed to match
-
-  ;; matches every tx
-  (db-tx conn [[]])
-
-  ;; matches every tx with entity id of 435
-  (db-tx conn [[453]])
-
-
-  ;; matches to any title changes for this book's id
-  (defn book [id]
-    (let [db (db-tx conn [[id :book/title]])]
-      ...))
-
-  ;; underscore symbol is wildcard, but it must be quoted
-
-  '[[_ :person/name]] ;; or
-  [['_ :person/name]]
-
-  ;; tx datoms are [entity attribute value tx added?]
-  ;; this matches only those persons who just left a group
-  ;; since 'false' means it was retracted
-  (db-tx conn '[[_ :person/group _ _ false]])
-
-  ;; if you have external variables you'll have to unquote the form
-  ;; and quote each underscore
-  (let [color "red"]
-    (db-tx conn [['_ :car/color color]]))
-  
-  ;; multiple patterns. If it matches any one of them it updates
-  (db-tx conn '[[_ :person/name]
-                [_ :person/age]
-                [_ :person/group]])
-
-  ;; You can use predicate functions in the match.
-  ;; The function will get passed the datom's value as an arg
-  
-  ;; this will match any person older than 20
-  (db-tx conn '[[_ :person/age #(> % 20)]])
-
-  ;; but it's bad to use anonymous functions in the pattern like this
-  ;; because db-tx, pull-tx, and q-tx memoize and ClojureScript doesn't know that
-  ;; #(> % 20) equals #(> % 20) so it gobbles up memory
-
-  ;; So you either need to define your functions or, if you do use
-  ;; anonymous functions, at least put db-tx, pull-tx, or q-tx in the
-  ;; outer binding of  a form-2 component so it only loads onces.
-
-  ;; same thing, but nice for memoizing
-  (defn >20? [n] (> n 20))
-  (db-tx conn [['_ :person/age >20?]])
-
-  ;; match on any attrib change for a person,
-  ;; like :person/name, :person/age, but not :book/name
-  (defn person-attrib? [a] (= (namespace a) "person"))
-  (db-tx conn [['_ person-attrib?]])
-
-  ;; you can also group together possibilities in a vector.
-
-  ;; matches on the actions "drink" "burp" "sleep"
-  (db-tx conn [['_ :person/action ["drink" "burp" "sleep"]]])
-
-  ;; matches either of two people with id's 123 or 234, if either
-  ;; their name or age changes:
-  (db-tx conn [[[123 234] [:person/name :person/age]]])
-```
-
-### Query Matching
-
-Note: You shouldn't need query matching when using `pull`s and `q`s, but it
-is useful for `db-tx`, `after-tx!`, and `before-tx!`.
-
-In some cases you might want to do a little querying to get some extra
-information. For example, suppose we have a bookshelf component that
-prints out the names of all its books in alphabetical order. You'd want
-to listen for any changes to the bookshelf itself (like its own name)
-and you want to know when the title of any of the books changes so you
-can re-sort the shelf. Here's an example:
-
-```clj
-(defn bookshelf [bookshelf-id]
-  (let [db    (db-tx conn
-                     [[bookshelf-id]
-                      ['_ :book/bookshelf bookshelf-id]
-                      '[_ :book/name]])
-        b     (d/entity @db bookshelf-id)
-        books (map (partial d/entity @db)
-                   (d/q '[:find [?b ...]
-                          :in $ ?bs
-                          :where
-                          [?b :book/bookshelf ?bs]]
-                        @db bookshelf-id))]
-    [:ul "Books on bookshelf: " (:bookshelf/name b)
-     (for [b (sort-by :book/name books)]
-       ^{:key (:db/id b)} [:li (:book/name b)])]))
-```
-`[bookshelf-id]` watches for any changes to the
-bookshelf itself, like its name.
-
-`['_ :book/bookshelf bookshelf-id]`, watches for
-any books that get added to or retracted from the bookshelf.
-
-`'[_ :book/name]` watches for the change of any book names so it can
-re-sort the list. The problem with this is that it will match books
-that aren't even on its bookshelf. If we had a hundred
-bookshelves, changing the name of one book would cause them all the
-re-render--not good!
-
-To fix this, you can specify a query alongside your pattern matching.
-Just put the query in a map with the patterns as key.
-For example:
-
-```clj
-(db-tx conn {[[bookshelf-id]
-              ['_ :book/bookshelf bookshelf-id]
-              '[?b :book/name]]
-             [['?b :book/bookshelf bookshelf-id]]})
-```
-
-This grabs the `?b` from the last pattern (if the rest of the pattern `:book/name`
-matches first) and it runs the query to see if the book is part of
-the bookshelf. You can do anything you could normally do in a regular
-DataScript `q` query, even functions like:
-
-```clj
-(db-tx conn {'[[?p :person/action :drinking]]
-             '[[?p :person/age ?a]
-               [(< ?a 21)]]})             
-```
-which matches to any underaged drinkers.
-
-You can match as many variables as you'd like, but the query only gets
-run with the first matching pattern that returns vars.
-
-The pattern matcher is recursive, so you can pair queries with any
-datom pattern in the list.
-
-Suppose we have a `group` that sorts people either by name or by age.
-Let's say we are pretty thorough and only want to re-render the
-component when it's sorting by age and a person's age changes, or when it's
-sorting by name and a person's name changes, but not when a person's
-age changes and it's sorting by name, etc. You could do it this way:
-
-```clj
-(db-tx conn
-    [[group-id]
-     ['_ :person/group group-id]
-     {'[[?p :person/name _ _ true]]
-      [['?p :person/group group-id]
-       '[?p :person/group ?g]
-       '[?g :group/sort-by :person/name]]}
-     {'[[?p :person/age _ _ true]]
-      [['?p :person/group group-id]
-       '[?p :person/group ?g]
-       '[?g :group/sort-by :person/age]]}])
-```
-That's pretty verbose. Of course, you can generate the matching patterns and queries
-programatically.
-
-(You should notice here that `'[?p :person/group ?g]` follows
-`['?p :person/group group-id]` to bind `?g` to `group-id` so that it
-can unify with `'[?g :group/sort-by :person/name]`. You can't just do
-`[group-name :group/sort-by :person/name]` or it will always be true.)
-
-If you have nested queries, the parent queries get concatenated onto
-the children queries. Below is the same query as above:
-
-```clj
-(db-tx conn
-       [[group-id]
-        ['_ :person/group group-id]
-        {[{'[[?p :person/age _ _ true]]
-           '[[?g :group/sort-by :person/age]]}
-          {'[[?p :person/name _ _ true]]
-           '[[?g :group/sort-by :person/name]]}]
-         '[[?p :person/group ?g]]}])
-```
-`[[?p :person/group ?g]]` is a parent query so it gets appended to
-the children query. Let's say the datom is `[123 :person/name "Jim"]`.
-It won't match with `[group-id]` or with `['_ :person/group group-id]`
-so it will move onto the next pattern, which is a map, so it will grab
-the query `'[[?p :person/group ?g]]` and check the list of patterns,
-which are themselves query maps. It will fail to match
-`'[[?p :person/age _ _ true]]` so it will ignore the corresponding
-query. It will finally match `'[[?p :person/name _ _ true]]` and
-combine the parent and children queries and run `d/q`.
-
-Another thing you can do is use a function to return a variable
-or set of variables that can then be used to bind to a query. Just put
-them in a map.
-
-The solution below does the same thing as both above, except it will work
-with any tags you put into `person-sortables`.
-
-```clj
-(def person-sortables [:person/name :person/age :person/height :person/weight])
-
-(defn person-sortable [a]
-  (when (some #{a} person-sortables)
-    {'?sort-attr a}))
-
-(db-tx conn
-       [[group-id]
-        ['_ :person/group group-id]
-        {['?p person-sortable '_ '_ true]
-         [['?p :person/group group-id]
-          '[?p :person/group ?g]
-          '[?g :group/sort-by ?sort-attr]]}])
-```
-
-### Using `?variables` from the Datom Match
-
-This is not really recommended because it ruins the purity of the
-state.
-
-In `pull-tx` and `q-tx` you can set variables in the datom
-match and use the values for them in the query or pull.
-
-You should never do it though and I'll probably remove this feature so
-that nobody is tempted.
-
-#### pull-tx
-
-In the example below, `?p` and `?attr` are set in the datom match and
-are used to pull info about the person who has most recently changed
-an attribute.
-
-```clj
-(defn person-attr [a]
-  (when (= (namespace a) "person")
-    {'?attr a}))
-
-(defn last-person-changed []
-  (let [p (pull-tx conn [['?p person-attr]] '[:person/name ?attr] '?p)]
-    (if-not @p
-      [:div "Waiting for someone to change something..."]
-      (let [changed-attr (or (first (remove #(= :person/name %) (keys @p)))
-                             :person/name)]
-        [:div (:person/name @p)
-         " just changed his/her " (name changed-attr)
-         " to " (changed-attr @p)]))))
-```
-
-The problem with this is that when you reload the app, nothing will
-appear until something is new is transacted. It would be better to query for
-the last changed person or to set up a `after-tx!` that updates some
-entry in the db that points to the last changed person.
-
-#### q-tx
-
-In the next example, the values of `?birthday-boy` and
-`?birthday-age` from the pattern match are used as args to the query.
-
-```clj
-(defn all-people-older-than-birthday-person []
-  (let [r (q-tx conn '[[?birthday-boy :person/age ?birthday-age _ true]]
-                    '[:find ?birthday-name ?name
-                      :in $ ?birthday-boy ?birthday-age
-                      :where
-                      [?p :person/age ?age]
-                      [(> ?age ?birthday-age)]
-                      [?p :person/name ?name]
-                      [?birthday-boy :person/name ?birthday-name]]
-                    '?birthday-boy
-                    '?birthday-age)]
-    (if (empty? @r)
-      [:div "Waiting for a birthday..."]
-      [:ul "Happy Birthday, " (ffirst @r) "! These people are still older than you:"
-       (for [n (map second @r)] ^{:key n} [:li n])])))
-```
-
-If you put any variable symbols in the `args` (symbols starting with a
-`?`), the query will return an empty set on its very first load and won't change
-until a datom is matched from the tx report.
-
-This also is just a lame trick and probably no use.
-
-## More later...
-
-I haven't looked at how to communicate with the back-end yet.
-Maybe there's some cool, easy way to do it.
+## Back-end
+
+As of version 0.5, `posh.core` should be able to run on Datomic
+databases and keep track of all queries. It can also generate, for any
+`q` or `pull`, the "necessary datoms" needed in a bare database to get
+the same result for that `q` or `pull`, which means that the front-end
+can send its graph of queries to the backend and get back any datoms
+needed to update its db whenever anything relevant changes.
+
+[Datsync](https://github.com/metasoarous/datsync) is a utility that
+eventually will do this, though currently it just copies the entire
+Datomic db over to DataScript.
+
+See our Gitter room for updates: https://gitter.im/mpdairy/posh
 
 ## License
 
