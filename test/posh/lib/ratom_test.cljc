@@ -26,11 +26,11 @@
 (def testite 10)
 
 (defn dispose [v]
-  #?(:clj  (.dispose ^posh.lib.server.ratom.IDisposable v)
+  #?(:clj  (.dispose ^posh.lib.ratom.IDisposable v)
      :cljs (r/dispose v)))
 
 (defn add-on-dispose [x v]
-  #?(:clj  (.addOnDispose ^posh.lib.server.ratom.IDisposable x v)
+  #?(:clj  (.addOnDispose ^posh.lib.ratom.IDisposable x v)
      :cljs (r/addOnDispose x v)))
 
 (def perf-check 0)

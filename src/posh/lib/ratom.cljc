@@ -528,8 +528,7 @@
 (#?(:clj definterface :cljs defprotocol) IRunnable
   (run [#?(:cljs this)]))
 
-(defn- handle-reaction-change [^Reaction this sender old new]
-  (.handleChange this sender old new))
+(declare handle-reaction-change)
 
 (deftype Reaction
   #?(:clj  [^:unsynchronized-mutable f
@@ -732,6 +731,9 @@
 
   #?(:cljs IHash)
   #?(:cljs (-hash [this] (goog/getUid this))))
+
+(defn- handle-reaction-change [^Reaction this sender old new]
+  (.handleChange this sender old new))
 
 (defn- deref-capture [f ^Reaction r]
   (setf! r captured nil)
