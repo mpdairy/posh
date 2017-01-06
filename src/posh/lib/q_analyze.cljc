@@ -1,7 +1,6 @@
 (ns posh.lib.q-analyze
   (:require
    [posh.lib.util :as util]
-   [datascript.core :as d]
    [posh.lib.datom-matcher :as dm]
    [posh.lib.pull-analyze :as pa]
    #?(:clj [clojure.core.match :refer [match]]
@@ -31,7 +30,7 @@
   (if-not (map? query)
     (split-list-at keyword? query)
     query))
- 
+
 (defn dbvar? [x] (and (symbol? x) (= (first (str x)) \$)))
 
 (defn qvar? [x] (and (symbol? x) (= (first (str x)) \?)))
@@ -157,7 +156,7 @@
           (take (count (first vs)) (repeat #{})) vs))
 
 (defn pattern-from-eav--old [vars [e a v :as eav]]
-  (let [[qe qa qv] (map qvar? eav)] 
+  (let [[qe qa qv] (map qvar? eav)]
     (for [ee (if qe ['_ (get vars e)] [e])
           aa (if qa ['_ (get vars a)] [a])
           vv (if qv ['_ (get vars v)] [v])
@@ -288,14 +287,14 @@
        {(first ins) (first args)})
      (just-qvars (rest ins) (rest args)))))
 
-(defn get-input-sets [ins args]
+(defn get-input-sets [q-fn ins args]
   (let [varmap  (just-qvars ins args)]
     (if-not (empty? varmap)
       (let
           [qvars   (vec (get-all-vars (keys varmap)))
            varvals (apply
-                    (partial d/q {:find qvars
-                                  :in (keys varmap)})
+                    (partial q-fn {:find qvars
+                                   :in (keys varmap)})
                     (vals varmap))
            varsets (reduce (partial merge-with conj) (zipmap qvars (repeat #{}))
                            (map #(zipmap qvars %) varvals))]
@@ -490,12 +489,12 @@
                   (apply merge))}))))
      (when (some #{:results} retrieve)
        {:results
-        (d/q {:find (vec (:find qm))
-              :in [[vars '...]]}
-             (vec r))})
+        ((:q dcfg) {:find (vec (:find qm))
+                    :in [[vars '...]]}
+                   (vec r))})
      (when (some #{:patterns :filter-patterns :simple-patterns} retrieve)
        (let
-           [in-vars      (get-input-sets (:in qm) args)
+           [in-vars      (get-input-sets (:q dcfg) (:in qm) args)
             eavs-ins    (map (fn [[db & eav]]
                                (vec
                                 (cons db
@@ -516,7 +515,7 @@
                           eavs-ins)]
          (merge
           (when (some #{:simple-patterns} retrieve)
-            {:patterns 
+            {:patterns
              (patterns-from-eavs dbvarmap rvars
                                  (clojure.walk/postwalk #(if (qvar? %) '_ %)
                                                         eavs-ins))})
