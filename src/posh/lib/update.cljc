@@ -1,6 +1,5 @@
 (ns posh.lib.update
-  (:require [datascript.core :as d]
-            [posh.lib.util :as util]
+  (:require [posh.lib.util :as util]
             [posh.lib.datom-matcher :as dm]
             [posh.lib.pull-analyze :as pa]
             [posh.lib.q-analyze :as qa]
