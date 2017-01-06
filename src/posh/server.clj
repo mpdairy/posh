@@ -1,9 +1,7 @@
-(ns posh.reagent
-  (:require-macros [reagent.ratom :refer [reaction]])
+(ns posh.server
   (:require [posh.plugin-base :as base]
-            [datascript.core :as d]
-            [reagent.core :as r]
-            [reagent.ratom :as ra]))
+            [posh.lib.server.ratom :as rx]
+            [datascript.core :as d]))
 
 (def dcfg
   (let [dcfg {:db            d/db
@@ -15,8 +13,8 @@
               :transact!     d/transact!
               :listen!       d/listen!
               :conn?         d/conn?
-              :ratom         r/atom
-              :make-reaction ra/make-reaction}]
+              :ratom         rx/atom
+              :make-reaction rx/make-reaction}]
    (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
 (def missing-pull-result (partial base/missing-pull-result dcfg))
