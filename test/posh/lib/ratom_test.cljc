@@ -1,55 +1,52 @@
-(ns posh.lib.server.ratom-test
+(ns posh.lib.ratom-test
   "Ported to .cljc from reagenttest.testratom by alexandergunnarson."
           (:refer-clojure :exclude [run! flush])
-          (:require #?(:clj  [clojure.test :as t :refer        [is deftest testing]]
-                       :cljs [cljs.test    :as t :refer-macros [is deftest testing]])
-                    #?(:clj  [posh.lib.server.ratom :as rv :refer        [run! reaction setm!]]
-                       :cljs [reagent.ratom         :as rv :refer-macros [run! reaction setm!]])
-                    #?(:cljs [reagent.debug :as debug :refer-macros [dbg]])
-                    #?(:cljs [reagent.core  :as r]))
+          (:require #?(:clj  [clojure.test   :as t :refer        [is deftest testing]]
+                       :cljs [cljs.test      :as t :refer-macros [is deftest testing]])
+                    #?(:clj  [posh.lib.ratom :as r :refer        [run! reaction setm!]]))
   #?(:clj (:import           [java.util ArrayList])))
 
-(def flush #?(:clj rv/flush! :cljs r/flush)) ; TODO may not be correct behavior for CLJ
+(def flush #?(:clj r/flush! :cljs r/flush! #_reagent.core/flush)) ; TODO may not be correct behavior for CLJS
 
 (defn fixture [f]
   (flush)
-  (setm! rv/debug true)
+  (setm! r/debug true)
   (f)
-  (setm! rv/debug false))
+  (setm! r/debug false))
 
 (def track-warnings
-  #?(:clj (fn [f] (f))
-     :cljs debug/track-warnings))
+  #?(:clj  (fn [f] (f))
+     :cljs (fn [f] (f)) #_reagent.debug/track-warnings))
 
 (t/use-fixtures :once fixture)
 
 (defn running []
-  (rv/running))
+  (r/running))
 
 (def testite 10)
 
 (defn dispose [v]
   #?(:clj  (.dispose ^posh.lib.server.ratom.IDisposable v)
-     :cljs (rv/dispose v)))
+     :cljs (r/dispose v)))
 
 (defn add-on-dispose [x v]
   #?(:clj  (.addOnDispose ^posh.lib.server.ratom.IDisposable x v)
-     :cljs (rv/addOnDispose x v)))
+     :cljs (r/addOnDispose x v)))
 
 (def perf-check 0)
 
 (defn ratom-perf []
-  #?(:cljs (dbg "ratom-perf"))
-  #?(:cljs (set! rv/debug false))
+  #_(:cljs (reagent.debug/dbg "ratom-perf"))
+  #?(:cljs (set! r/debug false))
   (dotimes [_ 10]
     (let [nite 100000
-          a (rv/atom 0)
+          a (r/atom 0)
           mid (reaction (quot @a 10))
           res (run!
                (inc @mid))]
       (time (dotimes [x nite]
               (swap! a inc)
-              (rv/flush!)))
+              (r/flush!)))
       (dispose res))))
 
 #?(:cljs (enable-console-print!))
@@ -57,12 +54,12 @@
 
 (deftest basic-ratom
   (let [runs (running)
-        start (rv/atom 0)
+        start (r/atom 0)
         sv (reaction @start)
         comp (reaction @sv (+ 2 @sv))
         c2 (reaction (inc @comp))
-        count (rv/atom 0)
-        out (rv/atom 0)
+        count (r/atom 0)
+        out (r/atom 0)
         res (reaction
              (swap! count inc)
              @sv @c2 @comp)
@@ -79,11 +76,11 @@
 
 (deftest double-dependency
   (let [runs (running)
-        start (rv/atom 0)
-        c3-count (rv/atom 0)
+        start (r/atom 0)
+        c3-count (r/atom 0)
         c1 (reaction @start 1)
         c2 (reaction @start)
-        c3 (rv/make-reaction
+        c3 (r/make-reaction
             (fn []
               (swap! c3-count inc)
               (+ @c1 @c2))
@@ -102,8 +99,8 @@
 
 (deftest test-from-reflex
   (let [runs (running)]
-    (let [!counter (rv/atom 0)
-          !signal (rv/atom "All I do is change")
+    (let [!counter (r/atom 0)
+          !signal (r/atom "All I do is change")
           co (run!
               ;;when I change...
               @!signal
@@ -115,8 +112,8 @@
       (is (= 2 @!counter)
           "Counter auto updated")
       (dispose co))
-    (let [!x (rv/atom 0)
-          !co (rv/make-reaction #(inc @!x) :auto-run true)]
+    (let [!x (r/atom 0)
+          !co (r/make-reaction #(inc @!x) :auto-run true)]
       (is (= 1 @!co) "CO has correct value on first deref")
       (swap! !x inc)
       (is (= 2 @!co) "CO auto-updates")
@@ -126,11 +123,11 @@
 (deftest test-unsubscribe
   (dotimes [x testite]
     (let [runs (running)
-          a (rv/atom 0)
+          a (r/atom 0)
           a1 (reaction (inc @a))
           a2 (reaction @a)
-          b-changed (rv/atom 0)
-          c-changed (rv/atom 0)
+          b-changed (r/atom 0)
+          c-changed (r/atom 0)
           b (reaction
              (swap! b-changed inc)
              (inc @a1))
@@ -171,28 +168,28 @@
 (deftest maybe-broken
   (let [runs (running)]
     (let [runs (running)
-          a (rv/atom 0)
+          a (r/atom 0)
           b (reaction (inc @a))
           c (reaction (dec @a))
           d (reaction (str @b))
-          res (rv/atom 0)
+          res (r/atom 0)
           cs (run!
               (reset! res @d))]
       (is (= @res "1"))
       (dispose cs))
     ;; should be broken according to https://github.com/lynaghk/reflex/issues/1
     ;; but isnt
-    (let [a (rv/atom 0)
+    (let [a (r/atom 0)
           b (reaction (inc @a))
           c (reaction (dec @a))
           d (run! [@b @c])]
       (is (= @d [1 -1]))
       (dispose d))
-    (let [a (rv/atom 0)
+    (let [a (r/atom 0)
           b (reaction (inc @a))
           c (reaction (dec @a))
           d (run! [@b @c])
-          res (rv/atom 0)]
+          res (r/atom 0)]
       (is (= @d [1 -1]))
       (let [e (run! (reset! res @d))]
         (is (= @res [1 -1]))
@@ -203,19 +200,19 @@
 (deftest test-dispose
   (dotimes [x testite]
     (let [runs (running)
-          a (rv/atom 0)
-          disposed (rv/atom nil)
-          disposed-c (rv/atom nil)
-          disposed-cns (rv/atom nil)
-          count-b (rv/atom 0)
-          b (rv/make-reaction (fn []
+          a (r/atom 0)
+          disposed (r/atom nil)
+          disposed-c (r/atom nil)
+          disposed-cns (r/atom nil)
+          count-b (r/atom 0)
+          b (r/make-reaction (fn []
                                 (swap! count-b inc)
                                 (inc @a))
                               :on-dispose (fn [_] (reset! disposed true)))
-          c (rv/make-reaction #(if (< @a 1) (inc @b) (dec @a))
+          c (r/make-reaction #(if (< @a 1) (inc @b) (dec @a))
                               :on-dispose (fn [_] (reset! disposed-c true)))
-          res (rv/atom nil)
-          cns (rv/make-reaction #(reset! res @c)
+          res (r/atom nil)
+          cns (r/make-reaction #(reset! res @c)
                                 :auto-run true
                                 :on-dispose (fn [_] (reset! disposed-cns true)))]
       @cns
@@ -252,17 +249,17 @@
 (deftest test-add-dispose
   (dotimes [x testite]
     (let [runs (running)
-          a (rv/atom 0)
-          disposed (rv/atom nil)
-          disposed-c (rv/atom nil)
-          disposed-cns (rv/atom nil)
-          count-b (rv/atom 0)
-          b (rv/make-reaction (fn []
+          a (r/atom 0)
+          disposed (r/atom nil)
+          disposed-c (r/atom nil)
+          disposed-cns (r/atom nil)
+          count-b (r/atom 0)
+          b (r/make-reaction (fn []
                                 (swap! count-b inc)
                                 (inc @a)))
-          c (rv/make-reaction #(if (< @a 1) (inc @b) (dec @a)))
-          res (rv/atom nil)
-          cns (rv/make-reaction #(reset! res @c)
+          c (r/make-reaction #(if (< @a 1) (inc @b) (dec @a)))
+          res (r/atom nil)
+          cns (r/make-reaction #(reset! res @c)
                                 :auto-run true)]
       (add-on-dispose b (fn [r]
                               (is (= r b))
@@ -301,8 +298,8 @@
 
 (deftest test-on-set
   (let [runs (running)
-        a (rv/atom 0)
-        b (rv/make-reaction #(+ 5 @a)
+        a (r/atom 0)
+        b (r/make-reaction #(+ 5 @a)
                             :auto-run true
                             :on-set (fn [oldv newv]
                                       (reset! a (+ 10 newv))))]
@@ -318,8 +315,8 @@
 
 (deftest non-reactive-deref
   (let [runs (running)
-        a (rv/atom 0)
-        b (rv/make-reaction #(+ 5 @a))]
+        a (r/atom 0)
+        b (r/make-reaction #(+ 5 @a))]
     (is (= @b 5))
     (is (= runs (running)))
 
@@ -329,7 +326,7 @@
 
 (deftest catching
   (let [runs (running)
-        a (rv/atom false)
+        a (r/atom false)
         catch-count (atom 0)
         b (reaction (if @a (throw (#?(:clj Exception. :cljs js/Error.) "fail"))))
         c (run! (try @b (catch #?(:clj Throwable :cljs :default) e
@@ -378,10 +375,10 @@
 
 (deftest reset-in-reaction
   (let [runs (running)
-        state (rv/atom {})
+        state (r/atom {})
         c1 (reaction (get-in @state [:data :a]))
         c2 (reaction (get-in @state [:data :b]))
-        rxn (rv/make-reaction
+        rxn (r/make-reaction
              #(let [cc1 @c1
                     cc2 @c2]
                 (swap! state assoc :derived (+ (or cc1 0) (or cc2 0)))
@@ -400,8 +397,8 @@
 
 (deftest exception-recover
   (let [runs (running)
-        state (rv/atom 1)
-        count (rv/atom 0)
+        state (r/atom 1)
+        count (r/atom 0)
         r (run!
            (swap! count inc)
            (when (> @state 1)
@@ -409,18 +406,18 @@
     (is (= @count 1))
     (is (thrown? #?(:clj Throwable :cljs :default)
           (do (swap! state inc)
-              (rv/flush!))))
+              (r/flush!))))
     (is (= @count 2))
     (swap! state dec)
-    (rv/flush!)
+    (r/flush!)
     (is (= @count 3))
     (dispose r)
     (is (= runs (running)))))
 
 (deftest exception-recover-indirect
   (let [runs (running)
-        state (rv/atom 1)
-        count (rv/atom 0)
+        state (r/atom 1)
+        count (r/atom 0)
         ref (reaction
              (when (= @state 2)
                (throw (#?(:clj Exception. :cljs js/Error.) "err"))))
@@ -430,18 +427,18 @@
     (is (= @count 1))
     (is (thrown? #?(:clj Throwable :cljs :default)
           (do (swap! state inc)
-              (rv/flush!))))
+              (r/flush!))))
     (is (= @count 2))
     (is (thrown? #?(:clj Throwable :cljs :default) @ref))
     (swap! state inc)
-    (rv/flush!)
+    (r/flush!)
     (is (= @count 3))
     (dispose r)
     (is (= runs (running)))))
 
 (deftest exception-side-effect
   (let [runs (running)
-        state (rv/atom {:val 1})
+        state (r/atom {:val 1})
         rstate (reaction @state)
         spy (atom nil)
         r1 (run! @rstate)
@@ -465,7 +462,7 @@
 
 (deftest exception-reporting
   (let [runs (running)
-        state (rv/atom {:val 1})
+        state (r/atom {:val 1})
         rstate (reaction (:val @state))
         r1 (run!
             (when (= @rstate 13)

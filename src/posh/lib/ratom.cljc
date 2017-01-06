@@ -1,14 +1,8 @@
-(ns posh.lib.server.ratom
+(ns posh.lib.ratom
   "Ported to .cljc from reagent.ratom by alexandergunnarson."
            (:refer-clojure :exclude [atom run!])
-           (:require        [clojure.set           :as s]
-                 #?@(:cljs [[reagent.impl.util     :as util]
-                            [reagent.debug         :as d
-                              :refer-macros [dbg log warn error dev? time]]
-                            [reagent.impl.batching :as batch]]))
-  #?(:cljs (:require-macros [reagent.ratom
-                              :refer [with-let]]
-                            [posh.lib.server.ratom
+           (:require        [clojure.set           :as s])
+  #?(:cljs (:require-macros [posh.lib.ratom
                               :refer [getm setm! getf setf! add! array-list alength* aset* aget*]]))
   #?(:clj  (:import         [java.util ArrayList]
                             [clojure.lang IDeref IAtom IRef IMeta IHashEq])))
@@ -51,14 +45,14 @@
   "Get mutable"
   [x]
   (if-cljs &env x
-                `(.get ~(with-meta x {:tag 'posh.lib.server.ratom.Mutable})))))
+                `(.get ~(with-meta x {:tag 'posh.lib.ratom.Mutable})))))
 
 #?(:clj
 (defmacro setm!
   "Set mutable"
   [x v]
   (if-cljs &env `(set!            ~x                                        ~v)
-                `(.set ~(with-meta x {:tag 'posh.lib.server.ratom.Mutable}) ~v))))
+                `(.set ~(with-meta x {:tag 'posh.lib.ratom.Mutable}) ~v))))
 
 #?(:clj
 (defmacro getf
@@ -252,7 +246,7 @@
 (defn- rea-enqueue [r]
   (when (nil? (getm rea-queue))
     (setm! rea-queue (array-list))
-    #?(:cljs (batch/schedule))) ; TODO CLJ
+    #_(:cljs (reagent.impl.batching/schedule)))
   (add! (getm rea-queue) r))
 
 (defn flush! []
@@ -266,7 +260,7 @@
             (.queuedRun r)))
         (recur)))))
 
-#?(:cljs (set! batch/ratom-flush flush!))
+#_(:cljs (set! reagent.impl.batching/ratom-flush flush!))
 
 ;;; Atom
 
@@ -846,11 +840,32 @@
   (getChanged  [this]   changed)
   (setChanged  [this v] (set! changed v))]))
 
-#?(:cljs
+#_(:cljs
 (defn make-wrapper [value callback-fn args]
   (Wrapper. value
-            (util/partial-ifn. callback-fn args nil)
+            (reagent.impl.util/partial-ifn. callback-fn args nil)
             false nil)))
+
+#?(:cljs ; TODO CLJ
+(defn rswap!
+  "Swaps the value of a to be (apply f current-value-of-atom args).
+  rswap! works like swap!, except that recursive calls to rswap! on
+  the same atom are allowed – and it always returns nil."
+  [a f & args]
+  {:pre [(satisfies? IAtom a)
+         (ifn? f)]}
+  (if a.rswapping
+    (-> (or a.rswapfs (set! a.rswapfs (array)))
+        (.push #(apply f % args)))
+    (do (set! a.rswapping true)
+        (try (swap! a (fn [state]
+                        (loop [s (apply f state args)]
+                          (if-some [sf (some-> a.rswapfs .shift)]
+                            (recur (sf s))
+                            s))))
+             (finally
+               (set! a.rswapping false)))))
+  nil))
 
 #?(:clj
 (defmacro reaction [& body]
