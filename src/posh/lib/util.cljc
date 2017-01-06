@@ -1,6 +1,6 @@
 (ns posh.lib.util)
 
-(defn exception [msg]
+(defn exception [^String msg]
   #?(:clj
      (throw (Exception. msg))
      :cljs
