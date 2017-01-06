@@ -1,5 +1,5 @@
 (defproject posh "0.5.5"
-  :description "Luxuriously easy and powerful Reagant / Datascript front-end framework"
+  :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -9,7 +9,7 @@
                  [org.clojure/core.match "0.3.0-alpha4"]]
   :plugins [[lein-cljsbuild "1.1.3"]]
   :cljsbuild {
-              :builds [ {:id "posh" 
+              :builds [ {:id "posh"
                          :source-paths ["src/"]
                          :figwheel false
                          :compiler {:main "posh.core"
