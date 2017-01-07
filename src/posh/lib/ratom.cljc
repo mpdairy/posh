@@ -247,7 +247,7 @@
   (when (nil? (getm rea-queue))
     (setm! rea-queue (array-list))
     #_(:cljs (reagent.impl.batching/schedule)))
-  (add! (getm rea-queue) r))
+  (let [x (getm rea-queue)] (add! x r))) ; For anti-reflection
 
 (defn flush! []
   (loop []

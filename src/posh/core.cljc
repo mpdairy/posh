@@ -34,7 +34,6 @@
    :filters {}})
    ;; {db-id {:filter pred :as-of t :with tx-data :since t}}
 
-
 (defn add-db
   ([posh-tree db-id conn schema] (add-db posh-tree db-id conn schema nil))
   ([{:keys [dcfg conns schemas dbs cache graph] :as posh-tree}

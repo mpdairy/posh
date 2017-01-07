@@ -1,32 +1,85 @@
 (ns posh.clj.datomic
   (:require [posh.plugin-base :as base]
             [posh.lib.ratom :as rx]
+            [clojure.core.async :as async
+              :refer [thread <!!]]
             [datomic.api :as d]))
 
-(defn- TODO [& [msg]] (throw (ex-info (str "TODO: " msg) nil)))
+; TODO import stuartsierra.component ?
+(defprotocol Lifecycle
+  (start [this])
+  (stop  [this]))
 
-(defn- conn? [x] (instance? datomic.Connection x))
+(defrecord PoshableConnection [datomic-conn listeners interrupted?]
+  Lifecycle
+  (start [this]
+    (assert (instance? datomic.Connection datomic-conn))
+    (assert (instance? clojure.lang.IAtom interrupted?))
+    (thread
+      (loop []
+        (when-not @interrupted?
+                     ; `poll` because if `take`, still won't be nil or stop waiting when conn is released
+          (when-let [txn-report (.poll ^java.util.concurrent.BlockingQueue
+                                       (d/tx-report-queue datomic-conn)
+                                       1
+                                       java.util.concurrent.TimeUnit/SECONDS)]
+            (try (doseq [[_ callback] @listeners]
+                   (callback txn-report))
+                 (catch Throwable e))  ; TODO warn when there's a problem?
+            (recur)))))
+    this)
+  (stop [this]
+    (reset! interrupted? true)
+    this))
 
-; TODO maybe we don't want blocking here?)
-(defn- transact!* [& args] @(apply d/transact args))
+(defn ->poshable-conn [datomic-conn]
+  {:pre [(instance? datomic.Connection datomic-conn)]}
+  (let [listeners (atom nil)]
+    (with-meta (start (PoshableConnection. datomic-conn listeners (atom false)))
+               {:listeners listeners})))
 
-(defn- listen!
+(defn conn? [x] (instance? PoshableConnection x))
+
+(defn ->conn [x]
+  (if (conn? x)
+      (:datomic-conn x)
+      x))
+
+(defn assert-pconn [x] (assert (instance? PoshableConnection x)))
+
+(defn listen!
   ([conn callback] (listen! conn (rand) callback))
   ([conn key callback]
      {:pre [(conn? conn)]}
-     (TODO "Need to figure out how to listen to Datomic connection in the same way as DataScript")
+     (swap! (:listeners (meta conn)) assoc key callback)
      key))
 
+(defn db* [x]
+  (cond (instance? datomic.Database x)
+        x
+        (conn? x)
+        (-> x :datomic-conn d/db)
+        (instance? datomic.Connection x)
+        (d/db x)
+        :else x #_(throw (ex-info "Object cannot be converted into DB" {:obj x}))))
+
+(defn q* [q x & args]
+  (apply d/q q (db* x) args))
+
+(defn transact!* [x txn & args]
+  @(apply d/transact (->conn x) txn args)) ; TODO do we want it to block?
+
 (def dcfg
-  (let [dcfg {:db            d/db
+  (let [dcfg {:db            db*
               :pull*         d/pull
-              :q             d/q
+              :q             q*
               :filter        d/filter
               :with          d/with
               :entid         d/entid
               :transact!     transact!*
               :listen!       listen!
               :conn?         conn?
+              :->poshable-conn ->poshable-conn
               :ratom         rx/atom
               :make-reaction rx/make-reaction}]
    (assoc dcfg :pull (partial base/safe-pull dcfg))))
