@@ -18,7 +18,7 @@
     (try (let [sub (db/q [:find '?e
                           :where ['?e :test/attr]]
                          conn)
-               _ (prl @sub)
+               _ (is (= @sub #{}))
                txn-report (db/transact! conn
                             [{:db/id      (tempid)
                               :test/attr  "Abcde"}])
