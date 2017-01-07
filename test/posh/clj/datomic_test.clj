@@ -15,8 +15,7 @@
      (load-file "./test/posh/clj/datomic_test.clj")
      (eval '(clojure.test/run-tests 'posh.clj.datomic-test)))
 
-(def ^{:doc "The default partition"} default-partition :db.part/default)
-
+(def default-partition :db.part/default)
 (defn tempid [] (d/tempid default-partition))
 
 (defn install-partition [part]
