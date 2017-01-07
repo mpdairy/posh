@@ -3,7 +3,12 @@
             [posh.lib.ratom :as rx]
             [clojure.core.async :as async
               :refer [thread <!!]]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [posh.lib.util :as u
+              :refer [debug]]))
+
+(defn datom->seq [^datomic.Datom d]
+  [(.e d) (.a d) (.v d) (.tx d) (.added d)])
 
 ; TODO import stuartsierra.component ?
 (defprotocol Lifecycle
@@ -23,9 +28,12 @@
                                        (d/tx-report-queue datomic-conn)
                                        1
                                        java.util.concurrent.TimeUnit/SECONDS)]
-            (try (doseq [[_ callback] @listeners]
-                   (callback txn-report))
-                 (catch Throwable e))  ; TODO warn when there's a problem?
+            (debug "txn-report received in PoshableConnection")
+            (try (let [txn-report' (update txn-report :tx-data
+                                     #(map datom->seq %))]
+                   (doseq [[_ callback] @listeners]
+                     (callback txn-report')))
+                 (catch Throwable e (debug "WARNING:" e)))
             (recur)))))
     this)
   (stop [this]
