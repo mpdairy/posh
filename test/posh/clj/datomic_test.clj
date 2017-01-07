@@ -64,11 +64,11 @@
                  txn-report (db/transact! conn
                               [{:db/id (tempid)
                                 :test/attr  "Abcde"}])
-                 _ (prl @sub
-                        @(db/q [:find '?e
+                 _ (is (= @sub
+                          @(db/q [:find '?e
+                                  :where ['?e :test/attr]]
+                                 conn)
+                          (d/q [:find '?e
                                 :where ['?e :test/attr]]
-                               conn)
-                        (d/q [:find '?e
-                              :where ['?e :test/attr]]
-                              (db/db* conn)))])
+                                (db/db* conn))))])
            (finally (db/stop conn)))))) ; TODO `unposh!`
