@@ -24,7 +24,7 @@
       (loop []
         (when-not @interrupted?
                      ; `poll` because if `take`, still won't be nil or stop waiting when conn is released
-          (when-let [{:keys [db-after] txn-report}
+          (when-let [{:keys [db-after] :as txn-report}
                        (.poll ^java.util.concurrent.BlockingQueue
                               (d/tx-report-queue datomic-conn)
                               1
