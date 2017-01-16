@@ -7,8 +7,8 @@
             [posh.lib.util :as u
               :refer [debug]]))
 
-(defn datom->seq [^datomic.Datom d]
-  [(.e d) (.a d) (.v d) (.tx d) (.added d)])
+(defn datom->seq [db-after ^datomic.Datom d]
+  [(.e d) (d/ident db-after (.a d)) (.v d) (.tx d) (.added d)])
 
 ; TODO import stuartsierra.component ?
 (defprotocol Lifecycle
@@ -24,13 +24,14 @@
       (loop []
         (when-not @interrupted?
                      ; `poll` because if `take`, still won't be nil or stop waiting when conn is released
-          (when-let [txn-report (.poll ^java.util.concurrent.BlockingQueue
-                                       (d/tx-report-queue datomic-conn)
-                                       1
-                                       java.util.concurrent.TimeUnit/SECONDS)]
+          (when-let [{:keys [db-after] txn-report}
+                       (.poll ^java.util.concurrent.BlockingQueue
+                              (d/tx-report-queue datomic-conn)
+                              1
+                              java.util.concurrent.TimeUnit/SECONDS)]
             (debug "txn-report received in PoshableConnection")
             (try (let [txn-report' (update txn-report :tx-data
-                                     #(map datom->seq %))]
+                                     (fn [datoms] (map #(datom->seq db-after %) datoms)))]
                    (doseq [[_ callback] @listeners]
                      (callback txn-report')))
                  (catch Throwable e (debug "WARNING:" e)))
