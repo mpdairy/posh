@@ -303,16 +303,11 @@
 (defprotocol IReactiveAtom)
 
 (deftype RAtom
-  #?(:clj  [^:mutable state
-            meta
-            validator
-            ^:mutable watches
-            ^:mutable watchesArr]
-     :cljs [^:mutable state
-            meta
-            validator
-            ^:mutable watches
-            ^:mutable watchesArr])
+  [^:mutable state
+   meta
+   validator
+   ^:mutable watches
+   ^:mutable watchesArr]
   #?(:cljs IAtom)
   IReactiveAtom
 
@@ -401,9 +396,8 @@
   (getArgs [])))
 
 (deftype Track
-  #?(:clj  [^:mutable f args
-            ^:mutable reaction]
-     :cljs [f args ^:mutable reaction])
+  [^:mutable f args ; Note: `f` is not marked mutable in Reagent but is nonetheless mutable
+   ^:mutable reaction]
   IReactiveAtom
 
   IDeref
@@ -460,14 +454,10 @@
   (getRatom [])))
 
 (deftype RCursor
-  #?(:clj  [ratom path
-            ^:mutable reaction
-            ^:mutable state
-            ^:mutable watches]
-     :cljs [ratom path
-            ^:mutable reaction
-            ^:mutable state
-            ^:mutable watches])
+  [ratom path
+   ^:mutable reaction
+   ^:mutable state
+   ^:mutable watches]
   #?(:cljs IAtom)
   IReactiveAtom
 
@@ -566,34 +556,23 @@
 (declare handle-reaction-change)
 
 (deftype Reaction
-  #?(:clj  [^:mutable f
-            ^:mutable state
-            ^:mutable dirty?
-            ^:mutable no-cache?
-            ^:mutable watching
-            ^:mutable watches
-            ^:mutable autoRun
-            ^:mutable caught
-            ^:mutable on-set
-            ^:mutable on-dispose
-            ^:mutable on-dispose-arr
-            ^:mutable captured
-            ^:mutable ratomGeneration
-            ^:mutable watchesArr]
-     :cljs [f ^:mutable state
-            ^:mutable
-            ^boolean dirty?
-            ^boolean no-cache?
-            ^:mutable watching
-            ^:mutable watches
-            ^:mutable autoRun
-            ^:mutable caught
-            ^:mutable on-set
-            ^:mutable on-dispose
-            ^:mutable on-dispose-arr
-            ^:mutable captured
-            ^:mutable ratomGeneration
-            ^:mutable watchesArr])
+  ; Note: `f`, `dirty?`, and `no-cache?` are not marked mutable in Reagent but are nonetheless mutable
+  [^:mutable f
+   ^:mutable state
+   #?(:clj ^:mutable dirty?
+      :cljs ^:mutable ^boolean dirty?)
+   #?(:clj ^:mutable no-cache?
+      :cljs ^:mutable ^boolean no-cache?)
+   ^:mutable watching
+   ^:mutable watches
+   ^:mutable autoRun
+   ^:mutable caught
+   ^:mutable on-set
+   ^:mutable on-dispose
+   ^:mutable on-dispose-arr
+   ^:mutable captured
+   ^:mutable ratomGeneration
+   ^:mutable watchesArr]
   #?(:cljs IAtom)
   IReactiveAtom
 
@@ -920,8 +899,7 @@
   nil))
 
 #?(:clj
-(defmacro reaction [& body]
-  `(make-reaction (fn [] ~@body))))
+(defmacro reaction [& body] `(make-reaction (fn [] ~@body))))
 
 #?(:clj
 (defmacro run!
