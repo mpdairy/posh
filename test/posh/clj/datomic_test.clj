@@ -47,34 +47,39 @@
             (deref (d/sync-schema (db/->conn conn) (inc txn-id)) 500 nil)] ; frustratingly, doesn't even work with un-`inc`ed txn-id
     txn-report))
 
-(deftest basic-test
+(defn with-setup [schemas f]
   (with-conn conn*
     (let [poshed (db/posh! conn*) ; This performs a `with-meta` so the result is needed
           conn   (-> poshed :conns :conn0) ; Has the necessary meta ; TODO simplify this
           _      (is (instance? PoshableConnection conn))]
       (try (let [txn-report (db/transact! conn (install-partition default-partition))
-                 txn-report (transact-schemas! conn
-                              [{:db/ident       :test/attr
-                                :db/valueType   :db.type/string
-                                :db/cardinality :db.cardinality/one}])
-                 sub          (db/q [:find '?e :where ['?e :test/attr]] conn)
-                 sub-no-deref (db/q [:find '?e :where ['?e :test/attr]] conn)
-                 _ (is (= @sub #{}))
-                 notified (atom 0)
-                 _ (r/add-eager-watch sub :k (fn [_ _ _ _] (swap! notified inc)))
-                 notified-no-deref (atom 0)
-                 _ (r/add-eager-watch sub-no-deref :k-no-deref (fn [_ _ _ _] (swap! notified-no-deref inc)))
-                 txn-report (db/transact! conn
-                              [{:db/id     (tempid)
-                                :test/attr "Abcde"}])
-                 _ (do @sub @sub @sub @sub)
-                 _ (is (= @sub
-                          @(db/q [:find '?e
-                                  :where ['?e :test/attr]]
-                                 conn)
-                          (d/q [:find '?e
-                                :where ['?e :test/attr]]
-                                (db/db* conn))))
-                 _ (is (= @notified 1))
-                 _ (is (= @notified-no-deref 1))])
-           (finally (db/stop conn)))))) ; TODO `unposh!`
+                 txn-report (transact-schemas! conn schemas)]
+             (f conn))
+        (finally (db/stop conn)))))) ; TODO `unposh!`
+
+(deftest basic-test
+  (with-setup
+    [{:db/ident       :test/attr
+      :db/valueType   :db.type/string
+      :db/cardinality :db.cardinality/one}]
+    (fn [conn]
+      (let [sub          (db/q [:find '?e :where ['?e :test/attr]] conn)
+            sub-no-deref (db/q [:find '?e :where ['?e :test/attr]] conn)
+            _ (is (= @sub #{}))
+            notified (atom 0)
+            _ (r/add-eager-watch sub :k (fn [_ _ _ _] (swap! notified inc)))
+            notified-no-deref (atom 0)
+            _ (r/add-eager-watch sub-no-deref :k-no-deref (fn [_ _ _ _] (swap! notified-no-deref inc)))
+            txn-report (db/transact! conn
+                         [{:db/id     (tempid)
+                           :test/attr "Abcde"}])
+            _ (do @sub @sub @sub @sub)
+            _ (is (= @sub
+                     @(db/q [:find '?e
+                             :where ['?e :test/attr]]
+                            conn)
+                     (d/q [:find '?e
+                           :where ['?e :test/attr]]
+                           (db/db* conn))))
+            _ (is (= @notified 1))
+            _ (is (= @notified-no-deref 1))]))))
