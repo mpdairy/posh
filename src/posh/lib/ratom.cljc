@@ -5,9 +5,17 @@
                             [posh.lib.util
                               :refer [#?(:clj if-cljs)]])
   #?(:cljs (:require-macros [posh.lib.ratom
-                              :refer [getm setm! getf setf! add! array-list alength* aset* aget*]]))
+                              :refer [getm setm! getum setum! getf setf! add! array-list alength* aset* aget* umut]]))
   #?(:clj  (:import         [java.util ArrayList]
                             [clojure.lang IDeref IAtom IRef IMeta IHashEq])))
+
+; According to `posh.lib.ratom-test/ratom-perf`,
+; the unsynchronized-mutable CLJ version takes ~177.315377 ms, while
+; the clojure.core/atom version takes ~345.78108 ms
+
+; If you want to use mutability here, you need to make sure all transacts (really, listener updates)
+; and all derefs are on the same thread. Changing the appropriate macros is pretty easy — much more
+; so than changing all the places where the macro affects.
 
 ;;; Misc utils
 
@@ -29,21 +37,51 @@
   IDeref
   (deref [this] val)))
 
-#?(:clj (defmacro mut [x] `(Mutable. ~x)))
+#?(:clj (defmacro mut "Mutable" [x] #_`(Mutable. ~x)
+                                   `(clojure.core/atom ~x)))
+
+#?(:clj (defmacro umut "Unsynchronized mutable" [x]
+          (if-cljs &env x `(clojure.core/atom ~x))))
 
 #?(:clj
 (defmacro getm
   "Get mutable"
   [x]
   (if-cljs &env x
-                `(.get ~(with-meta x {:tag 'posh.lib.ratom.Mutable})))))
+                #_`(.get ~(with-meta x {:tag 'posh.lib.ratom.Mutable}))
+                `(deref ~x))))
 
 #?(:clj
 (defmacro setm!
   "Set mutable"
   [x v]
   (if-cljs &env `(set!            ~x                                        ~v)
-                `(.set ~(with-meta x {:tag 'posh.lib.ratom.Mutable}) ~v))))
+                #_`(.set ~(with-meta x {:tag 'posh.lib.ratom.Mutable}) ~v)
+                `(reset! ~x ~v))))
+
+#?(:clj
+(defmacro getum
+  "Get unsynchronized-mutable"
+  [x]
+  (if-cljs &env x
+                #_x
+                `(deref ~x))))
+
+#?(:clj
+(defmacro getum*
+  "Get unsynchronized-mutable, handling nil"
+  [x]
+  (if-cljs &env x
+                #_x
+                `(let [x# ~x] (if (nil? x#) x# (deref x#))))))
+
+#?(:clj
+(defmacro setum!
+  "Set unsynchronized-mutable"
+  [x v]
+  (if-cljs &env `(set!   ~x ~v)
+                #_`(set! ~x ~v)
+                `(reset! ~x ~v))))
 
 #?(:clj
 (defmacro getf
@@ -69,27 +107,32 @@
 #?(:clj
 (defmacro add! [x v]
   (if-cljs &env `(.push ~x ~v)
-                `(.add ~(with-meta x {:tag 'java.util.ArrayList}) ~v))))
+                #_`(.add ~(with-meta x {:tag 'java.util.ArrayList}) ~v)
+                `(swap! ~x conj ~v))))
 
 #?(:clj
 (defmacro array-list [& args]
   (if-cljs &env `(array ~@args)
-                `(doto (ArrayList.) ~@(for [arg args] `(.add ~arg))))))
+                #_`(doto (ArrayList.) ~@(for [arg args] `(.add ~arg)))
+                `(clojure.core/atom [~@args]))))
 
 #?(:clj
 (defmacro alength* [x]
   (if-cljs &env `(alength ~x)
-                `(.size ~(with-meta x {:tag 'java.util.ArrayList})))))
+                #_`(.size ~(with-meta x {:tag 'java.util.ArrayList}))
+                `(count (deref ~x)))))
 
 #?(:clj
 (defmacro aget* [x i]
   (if-cljs &env `(aget ~x)
-                `(.get ~(with-meta x {:tag 'java.util.ArrayList}) ~i))))
+                #_`(.get ~(with-meta x {:tag 'java.util.ArrayList}) ~i)
+                `(get (deref ~x) ~i))))
 
 #?(:clj
 (defmacro aset* [x i v]
   (if-cljs &env `(aset ~x ~i ~v)
-                `(.set ~(with-meta x {:tag 'java.util.ArrayList}) ~i ~v))))
+                #_`(.set ~(with-meta x {:tag 'java.util.ArrayList}) ~i ~v)
+                `(swap! ~x assoc ~i ~v))))
 
 ;;; Interfaces and (certain) types
 
@@ -100,10 +143,10 @@
 
 #?(:clj
 (deftype HasCaptured
-  [^:unsynchronized-mutable captured]
+  [^:mutable captured]
   IHasCaptured
-  (getCaptured [this] captured)
-  (setCaptured [this v] (set! captured v))))
+  (getCaptured [this] (getum captured))
+  (setCaptured [this v] (setum! captured v))))
 
 #?(:clj
 (definterface IHasWatches
@@ -213,7 +256,7 @@
         a (if (nil? w)
             ;; Copy watches to array(-list) for speed
             (->> (getf this watches)
-                 (reduce-kv #(doto %1 (add! %2) (add! %3)) #?(:clj (ArrayList.) :cljs #js[]))
+                 (reduce-kv #(doto %1 (add! %2) (add! %3)) (array-list))
                  (setf! this watchesArr))
             w)]
     (let [len (alength* a)]
@@ -258,11 +301,11 @@
 (defprotocol IReactiveAtom)
 
 (deftype RAtom
-  #?(:clj  [^:unsynchronized-mutable state
+  #?(:clj  [^:mutable state
             meta
             validator
-            ^:unsynchronized-mutable watches
-            ^:unsynchronized-mutable watchesArr]
+            ^:mutable watches
+            ^:mutable watchesArr]
      :cljs [^:mutable state
             meta
             validator
@@ -277,23 +320,23 @@
   IDeref
   (#?(:clj deref :cljs -deref) [this]
     (notify-deref-watcher! this)
-    state)
+    (getum state))
 
   #?(:clj IAtom :cljs IReset)
   (#?(:clj reset :cljs -reset!) [a new-value]
     (when-not (nil? validator)
       (assert (validator new-value) "Validator rejected reference state"))
     (let [old-value state]
-      (set! state new-value)
-      (when-not (nil? watches)
+      (setum! state new-value)
+      (when-not (nil? (getum watches))
         (notify-w a old-value new-value))
       new-value))
 
   #?(:cljs ISwap)
-  (#?(:clj swap :cljs -swap!) [a f]          (#?(:clj .reset :cljs -reset!) a (f state)))
-  (#?(:clj swap :cljs -swap!) [a f x]        (#?(:clj .reset :cljs -reset!) a (f state x)))
-  (#?(:clj swap :cljs -swap!) [a f x y]      (#?(:clj .reset :cljs -reset!) a (f state x y)))
-  (#?(:clj swap :cljs -swap!) [a f x y more] (#?(:clj .reset :cljs -reset!) a (apply f state x y more)))
+  (#?(:clj swap :cljs -swap!) [a f]          (#?(:clj .reset :cljs -reset!) a (f (getum state))))
+  (#?(:clj swap :cljs -swap!) [a f x]        (#?(:clj .reset :cljs -reset!) a (f (getum state) x)))
+  (#?(:clj swap :cljs -swap!) [a f x y]      (#?(:clj .reset :cljs -reset!) a (f (getum state) x y)))
+  (#?(:clj swap :cljs -swap!) [a f x y more] (#?(:clj .reset :cljs -reset!) a (apply f (getum state) x y more)))
 
   IMeta
   (#?(:clj meta :cljs -meta) [_] meta)
@@ -311,15 +354,15 @@
 
   #?@(:clj
  [IHasWatches
-  (getWatches    [this]   watches)
-  (setWatches    [this v] (set! watches v))
-  (getWatchesArr [this]   watchesArr)
-  (setWatchesArr [this v] (set! watchesArr v))]))
+  (getWatches    [this]   (getum watches))
+  (setWatches    [this v] (setum! watches v))
+  (getWatchesArr [this]   (getum watchesArr))
+  (setWatchesArr [this v] (setum! watchesArr v))]))
 
 (defn atom
   "Like clojure.core/atom, except that it keeps track of derefs."
-  ([x] (RAtom. x nil nil nil nil))
-  ([x & {:keys [meta validator]}] (RAtom. x meta validator nil nil)))
+  ([x] (RAtom. (umut x) nil nil (umut nil) (umut nil)))
+  ([x & {:keys [meta validator]}] (RAtom. (umut x) meta validator (umut nil) (umut nil))))
 
 ;;; track
 
@@ -356,39 +399,39 @@
   (getArgs [])))
 
 (deftype Track
-  #?(:clj  [^:unsynchronized-mutable f args
-            ^:unsynchronized-mutable reaction]
+  #?(:clj  [^:mutable f args
+            ^:mutable reaction]
      :cljs [f args ^:mutable reaction])
   IReactiveAtom
 
   IDeref
   (#?(:clj deref :cljs -deref) [this]
-    (if-some [^IDeref r reaction]
+    (if-some [^IDeref r (getum reaction)]
       (#?(:clj .deref :cljs -deref) r)
-      (cached-reaction #(apply f args) f args this nil)))
+      (cached-reaction #(apply (getum f) args) (getum f) args this nil)))
 
   #?(:clj Object :cljs IEquiv)
   (#?(:clj equals :cljs -equiv) [_ other]
     (and (instance? Track other)
-         (= f (getf ^Track other f))
+         (= (getum f) (getf ^Track other f))
          (= args (getf ^Track other args))))
 
   #?(:clj IHashEq :cljs IHash)
-  (#?(:clj hasheq :cljs -hash) [_] (hash [f args]))
+  (#?(:clj hasheq :cljs -hash) [_] (hash [(getum f) args]))
 
   #?(:cljs IPrintWithWriter)
   #?(:cljs (-pr-writer [a w opts] (pr-atom a w opts "Track:")))
 
   #?@(:clj
  [IHasF
-  (getF    [this]   f)
-  (setF    [this v] (set! f v))
+  (getF    [this]   (getum f))
+  (setF    [this v] (setum! f v))
 
   ITrack
   (getArgs [this]   args)]))
 
 (defn make-track [f args]
-  (Track. f args nil))
+  (Track. (umut f) args (umut nil)))
 
 (defn make-track! [f args]
   (let [^Track t (make-track f args)
@@ -416,9 +459,9 @@
 
 (deftype RCursor
   #?(:clj  [ratom path
-            ^:unsynchronized-mutable reaction
-            ^:unsynchronized-mutable state
-            ^:unsynchronized-mutable watches]
+            ^:mutable reaction
+            ^:mutable state
+            ^:mutable watches]
      :cljs [ratom path
             ^:mutable reaction
             ^:mutable state
@@ -439,8 +482,8 @@
 
   (setState [this oldstate newstate]
     (when-not (identical? oldstate newstate)
-      (set! state newstate)
-      (when (some? watches)
+      (setum! state newstate)
+      (when (some? (getum watches))
         (notify-w this oldstate newstate))))
 
   #?@(:clj
@@ -449,8 +492,8 @@
 
   IDeref
   (#?(:clj deref :cljs -deref) [this]
-    (let [oldstate state
-          newstate (if-some [^IDeref r reaction]
+    (let [oldstate (getum state)
+          newstate (if-some [^IDeref r (getum reaction)]
                      (#?(:clj .deref :cljs -deref) r)
                      (let [f (if (satisfies? IDeref ratom)
                                #(get-in @ratom path)
@@ -461,7 +504,7 @@
 
   #?(:clj IAtom :cljs IReset)
   (#?(:clj reset :cljs -reset!) [this new-value]
-    (let [oldstate state]
+    (let [oldstate (getum state)]
       (.setState this oldstate new-value)
       (if (satisfies? IDeref ratom)
         (if (= path [])
@@ -494,8 +537,7 @@
                    (not (vector? src))))
           (str "src must be a reactive atom or a function, not "
                (pr-str src)))
-  (RCursor. src path nil nil nil))
-
+  (RCursor. src path (umut nil) (umut nil) (umut nil)))
 
 ;;; with-let support
 
@@ -522,20 +564,20 @@
 (declare handle-reaction-change)
 
 (deftype Reaction
-  #?(:clj  [^:unsynchronized-mutable f
-            ^:unsynchronized-mutable state
-            ^:unsynchronized-mutable dirty?
-            ^:unsynchronized-mutable no-cache?
-            ^:unsynchronized-mutable watching
-            ^:unsynchronized-mutable watches
-            ^:unsynchronized-mutable autoRun
-            ^:unsynchronized-mutable caught
-            ^:unsynchronized-mutable on-set
-            ^:unsynchronized-mutable on-dispose
-            ^:unsynchronized-mutable on-dispose-arr
-            ^:unsynchronized-mutable captured
-            ^:unsynchronized-mutable ratomGeneration
-            ^:unsynchronized-mutable watchesArr]
+  #?(:clj  [^:mutable f
+            ^:mutable state
+            ^:mutable dirty?
+            ^:mutable no-cache?
+            ^:mutable watching
+            ^:mutable watches
+            ^:mutable autoRun
+            ^:mutable caught
+            ^:mutable on-set
+            ^:mutable on-dispose
+            ^:mutable on-dispose-arr
+            ^:mutable captured
+            ^:mutable ratomGeneration
+            ^:mutable watchesArr]
      :cljs [f ^:mutable state
             ^:mutable
             ^boolean dirty?
@@ -557,19 +599,19 @@
   #?(:cljs (-notify-watches [this old new] (notify-w this old new))) ; TODO CLJ
   (#?(:clj addWatch    :cljs -add-watch   ) [this key f]        (add-w this key f))
   (#?(:clj removeWatch :cljs -remove-watch) [this key]
-    (let [was-empty (empty? watches)]
+    (let [was-empty (empty? (getum watches))]
       (remove-w this key)
       (when (and (not was-empty)
-                 (empty? watches)
-                 (nil? autoRun))
+                 (empty? (getum watches))
+                 (nil? (getum autoRun)))
         (#?(:clj .dispose :cljs dispose) this))))
 
   #?(:clj IAtom :cljs IReset)
   (#?(:clj reset :cljs -reset!) [a newval]
-    (assert (fn? (.-on-set a)) "Reaction is read only.")
-    (let [oldval state]
-      (set! state newval)
-      (on-set oldval newval)
+    (assert (fn? (getum on-set)) "Reaction is read only.")
+    (let [oldval (getum state)]
+      (setum! state newval)
+      ((getum on-set) oldval newval)
       (notify-w a oldval newval)
       newval))
 
@@ -586,47 +628,47 @@
 
   (handleChange [this sender oldval newval]
     (when-not (or (identical? oldval newval)
-                  dirty?)
-      (if (nil? autoRun)
+                  (getum dirty?))
+      (if (nil? (getum autoRun))
         (do
-          (set! dirty? true)
+          (setum! dirty? true)
           (rea-enqueue this))
-        (if (true? autoRun)
+        (if (true? (getum autoRun))
           (.run this false)
-          (autoRun this)))))
+          ((getum autoRun) this)))))
 
   (updateWatching [this derefed]
     (let [new (set derefed)
-          old (set watching)]
-      (set! watching derefed)
+          old (set (getum watching))]
+      (setum! watching derefed)
       (doseq [#?(:clj ^IRef w :cljs w) (s/difference new old)]
         (#?(:clj .addWatch :cljs -add-watch) w this handle-reaction-change))
       (doseq [#?(:clj ^IRef w :cljs w) (s/difference old new)]
         (#?(:clj .removeWatch :cljs -remove-watch) w this))))
 
   (queuedRun [this]
-    (when (and dirty? (some? watching))
+    (when (and (getum dirty?) (some? (getum watching)))
       (.run this true)))
 
   (tryCapture [this f]
     (try
-      (set! caught nil)
+      (setum! caught nil)
       (deref-capture f this)
       (catch #?(:clj Throwable :cljs :default) e
-        (set! state e)
-        (set! caught e)
-        (set! dirty? false))))
+        (setum! state e)
+        (setum! caught e)
+        (setum! dirty? false))))
 
   (run [this check]
-    (let [oldstate state
+    (let [oldstate (getum state)
           res (if check
-                (.tryCapture this f)
-                (deref-capture f this))]
-      (when-not no-cache?
-        (set! state res)
+                (.tryCapture this (getum f))
+                (deref-capture (getum f) this))]
+      (when-not (getum no-cache?)
+        (setum! state res)
         ;; Use = to determine equality from reactions, since
         ;; they are likely to produce new data structures.
-        (when-not (or (nil? watches)
+        (when-not (or (nil? (getum watches))
                       (= oldstate res))
           (notify-w this oldstate res)))
       res))
@@ -637,37 +679,37 @@
           on-dispose* (:on-dispose opts)
           no-cache*   (:no-cache   opts)]
       (when (some? auto-run*)
-        (set! autoRun auto-run*))
+        (setum! autoRun auto-run*))
       (when (some? on-set*)
-        (set! on-set on-set*))
+        (setum! on-set on-set*))
       (when (some? on-dispose*)
-        (set! on-dispose on-dispose*))
+        (setum! on-dispose on-dispose*))
       (when (some? no-cache*)
-        (set! no-cache? no-cache*))))
+        (setum! no-cache? no-cache*))))
 
   #?@(:clj
- [(getRatomGeneration [this]   ratomGeneration)
-  (setRatomGeneration [this v] (set! ratomGeneration v))
-  (getIsDirty         [this]   dirty?)
-  (setIsDirty         [this v] (set! dirty? v))
-  (getWatching        [this]   watching)
-  (setWatching        [this v] (set! watching v))
-  (getAutoRun         [this]   autoRun)
-  (setAutoRun         [this v] (set! autoRun v))
+ [(getRatomGeneration [this]   (getum ratomGeneration))
+  (setRatomGeneration [this v] (setum! ratomGeneration v))
+  (getIsDirty         [this]   (getum dirty?))
+  (setIsDirty         [this v] (setum! dirty? v))
+  (getWatching        [this]   (getum watching))
+  (setWatching        [this v] (setum! watching v))
+  (getAutoRun         [this]   (getum autoRun))
+  (setAutoRun         [this v] (setum! autoRun v))
 
   IHasF
-  (getF               [this]   f)
-  (setF               [this v] (set! f v))
+  (getF               [this]   (getum f))
+  (setF               [this v] (setum! f v))
 
   IHasCaptured
-  (getCaptured        [this]   captured)
-  (setCaptured        [this v] (set! captured v))
+  (getCaptured        [this]   (getum captured))
+  (setCaptured        [this v] (setum! captured v))
 
   IHasWatches
-  (getWatches    [this]   watches)
-  (setWatches    [this v] (set! watches v))
-  (getWatchesArr [this]   watchesArr)
-  (setWatchesArr [this v] (set! watchesArr v))])
+  (getWatches    [this]   (getum watches))
+  (setWatches    [this v] (setum! watches v))
+  (getWatchesArr [this]   (getum watchesArr))
+  (setWatchesArr [this v] (setum! watchesArr v))])
 
   IRunnable
   (run [this]
@@ -676,43 +718,43 @@
 
   IDeref
   (#?(:clj deref :cljs -deref) [this]
-    (when-some [e caught]
+    (when-some [e (getum caught)]
       (throw e))
     (let [non-reactive (nil? *ratom-context*)]
       (when non-reactive
         (flush!))
-      (if (and non-reactive (nil? autoRun))
-        (when dirty?
-          (let [oldstate state]
-            (set! state (f))
-            (when-not (or (nil? watches) (= oldstate state))
-              (notify-w this oldstate state))))
+      (if (and non-reactive (nil? (getum autoRun)))
+        (when (getum dirty?)
+          (let [oldstate (getum state)]
+            (setum! state ((getum f)))
+            (when-not (or (nil? (getum watches)) (= oldstate (getum state)))
+              (notify-w this oldstate (getum state)))))
         (do
           (notify-deref-watcher! this)
-          (when dirty?
+          (when (getum dirty?)
             (.run this false)))))
-    state)
+    (getum state))
 
   IDisposable
   (dispose [this]
-    (let [s state
-          wg watching]
-      (set! watching nil)
-      (set! state    nil)
-      (set! autoRun  nil)
-      (set! dirty?   true)
+    (let [s (getum state)
+          wg (getum watching)]
+      (setum! watching nil)
+      (setum! state    nil)
+      (setum! autoRun  nil)
+      (setum! dirty?   true)
       (doseq [#?(:clj ^IRef w :cljs w) (set wg)]
         (#?(:clj .removeWatch :cljs -remove-watch) w this))
-      (when (some? on-dispose)
-        (on-dispose s))
-      (when-some [a on-dispose-arr]
+      (when (some? (getum on-dispose))
+        ((getum on-dispose) s))
+      (when-some [a (getum on-dispose-arr)]
         (dotimes [i (alength* a)]
           ((aget* a i) this)))))
   (addOnDispose [this f]
     ;; f is called with the reaction as argument when it is no longer active
-    (if-some [a on-dispose-arr]
+    (if-some [a (getum on-dispose-arr)]
       (add! a f)
-      (set! on-dispose-arr (array-list f))))
+      (setum! on-dispose-arr (array-list f))))
 
   #?(:clj Object :cljs IEquiv)
   (#?(:clj equals :cljs -equiv) [o other] (identical? o other))
@@ -731,7 +773,7 @@
   (when (dev?)
     (setf! r ratomGeneration (setm! generation (inc generation))))
   (let [res (in-context r f)
-        c (getf r captured)]
+        c   (getum* (getf r captured))] ; `getum*` because it'll be an `array-list`
     (setf! r #?(:clj isDirty :cljs dirty?) false)
     ;; Optimize common case where derefs occur in same order
     (when-not (#?(:clj = :cljs arr-eq) c (getf r watching))
@@ -739,7 +781,9 @@
     res))
 
 (defn make-reaction [f & {:keys [auto-run on-set on-dispose]}]
-  (let [reaction (Reaction. f nil true false nil nil nil nil nil nil nil nil nil nil)]
+  (let [reaction (Reaction. (umut f  ) (umut nil) (umut true) (umut false) (umut nil) (umut nil)
+                            (umut nil) (umut nil) (umut nil ) (umut nil  ) (umut nil) (umut nil)
+                            (umut nil) (umut nil))]
     (.setOpts reaction {:auto-run   auto-run
                         :on-set     on-set
                         :on-dispose on-dispose})
@@ -775,9 +819,9 @@
   (setChanged  [v])))
 
 (deftype Wrapper
-  #?(:clj  [^:unsynchronized-mutable state callback
-            ^:unsynchronized-mutable changed
-            ^:unsynchronized-mutable watches]
+  #?(:clj  [^:mutable state callback
+            ^:mutable changed
+            ^:mutable watches]
      :cljs [^:mutable state callback
             ^:mutable ^boolean changed
             ^:mutable watches])
@@ -786,35 +830,35 @@
   IDeref
   (#?(:clj deref :cljs -deref) [this]
     (when (dev?)
-      (when (and changed (some? *ratom-context*))
+      (when (and (getum changed) (some? *ratom-context*))
         (#?(:clj println :cljs warn) "derefing stale wrap: "
               (pr-str this))))
-    state)
+    (getum state))
 
   #?(:clj IAtom :cljs IReset)
   (#?(:clj reset :cljs -reset!) [this newval]
-    (let [oldval state]
-      (set! changed true)
-      (set! state newval)
-      (when (some? watches)
+    (let [oldval (getum state)]
+      (setum! changed true)
+      (setum! state newval)
+      (when (some? (getum watches))
         (notify-w this oldval newval))
       (callback newval)
       newval))
 
   #?(:cljs ISwap)
-  (#?(:clj swap :cljs -swap!) [a f]          (#?(:clj .reset :cljs -reset!) a (f state)))
-  (#?(:clj swap :cljs -swap!) [a f x]        (#?(:clj .reset :cljs -reset!) a (f state x)))
-  (#?(:clj swap :cljs -swap!) [a f x y]      (#?(:clj .reset :cljs -reset!) a (f state x y)))
-  (#?(:clj swap :cljs -swap!) [a f x y more] (#?(:clj .reset :cljs -reset!) a (apply f state x y more)))
+  (#?(:clj swap :cljs -swap!) [a f]          (#?(:clj .reset :cljs -reset!) a (f (getum state))))
+  (#?(:clj swap :cljs -swap!) [a f x]        (#?(:clj .reset :cljs -reset!) a (f (getum state) x)))
+  (#?(:clj swap :cljs -swap!) [a f x y]      (#?(:clj .reset :cljs -reset!) a (f (getum state) x y)))
+  (#?(:clj swap :cljs -swap!) [a f x y more] (#?(:clj .reset :cljs -reset!) a (apply f (getum state) x y more)))
 
   #?(:clj Object :cljs IEquiv)
   (#?(:clj equals :cljs -equiv) [_ other]
     (and (instance? Wrapper other)
          ;; If either of the wrappers have changed, equality
          ;; cannot be relied on.
-         (not changed)
+         (not (getum changed))
          (not (getf ^Wrapper other changed))
-         (= state (getf ^Wrapper other state))
+         (= (getum state) (getf ^Wrapper other state))
          (= callback (getf ^Wrapper other callback))))
 
   #?(:clj IRef :cljs IWatchable)
@@ -827,17 +871,17 @@
 
   #?@(:clj
  [IWrapper
-  (getState    [this]   state)
-  (setState    [this v] (set! state v))
+  (getState    [this]   (getum state))
+  (setState    [this v] (setum! state v))
   (getCallback [this]   callback)
-  (getChanged  [this]   changed)
-  (setChanged  [this v] (set! changed v))]))
+  (getChanged  [this]   (getum changed))
+  (setChanged  [this v] (setum! changed v))]))
 
 #_(:cljs
 (defn make-wrapper [value callback-fn args]
-  (Wrapper. value
+  (Wrapper. (umut value)
             (reagent.impl.util/partial-ifn. callback-fn args nil)
-            false nil)))
+            (umut false) (umut nil))))
 
 #?(:cljs ; TODO CLJ
 (defn rswap!
