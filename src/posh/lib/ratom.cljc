@@ -14,8 +14,8 @@
 ; the clojure.core/atom version takes ~345.78108 ms
 
 ; If you want to use mutability here, you need to make sure all transacts (really, listener updates)
-; and all derefs are on the same thread. Changing the appropriate macros is pretty easy — much more
-; so than changing all the places where the macro affects.
+; and all derefs are on the same thread. Changing the appropriate macros from atomic to mutable (or
+; vice versa) is pretty easy — much more so than changing all the places where the macro affects.
 
 ;;; Misc utils
 

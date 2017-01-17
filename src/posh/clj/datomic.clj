@@ -29,6 +29,7 @@
     (assert (instance? datomic.Connection datomic-conn))
     (assert (instance? clojure.lang.IAtom listeners))
     (assert (instance? clojure.lang.IAtom interrupted?))
+    ; See `transact!*` as to why the below schema+entity is required.
     @(d/transact datomic-conn
        [{:db/id                 (d/tempid :db.part/db)
          :db.install/_attribute :db.part/db
@@ -57,9 +58,7 @@
                         (when-not (get @deduplicate-tx-idents tx-ident)
                           (run-listeners! this tx-report'))
                      (finally
-                       (swap! deduplicate-tx-idents
-                         (fn [m] (when-let [_ (get m tx-ident)] (debug "CCC" tx-ident))
-                                 (disj m tx-ident))))))
+                       (swap! deduplicate-tx-idents #(disj % tx-ident)))))
               (catch Throwable e (debug "WARNING:" e)))
             (recur)))))
     this)
@@ -107,8 +106,14 @@
    listeners to be run before returning."
   [conn tx]
   {:pre [(conn? conn)]}
-  (let [tx-ident  (d/squuid)
-        _ (debug "CCC!!" tx-ident)
+  (let [; In order to ensure listeners are run only once (i.e. deduplicate them),
+        ; we have to transmit to the report queue in a race-condition-free way
+        ; some sort of unique ID we know ahead of time. I'd like to just use the
+        ; txn ID, but this is not given ahead of time. Thus we must pass a squuid
+        ; to the transaction.
+        ; This is cleaner than e.g. using channels because they introduce race
+        ; conditions in this situation.
+        tx-ident   (d/squuid)
         _          (swap! (:deduplicate-tx-idents conn) conj tx-ident)
         tx-report  @(d/transact (->conn conn)
                       (conj (vec tx) [:db/add ::tx-notifier :posh.clj.datomic.tx-notifier/value tx-ident]))
