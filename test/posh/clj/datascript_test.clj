@@ -1,13 +1,15 @@
 (ns posh.clj.datascript-test
-  (:require [clojure.test        :as test
+  (:require [clojure.test          :as test
               :refer [is deftest testing]]
-            [datascript.core     :as d]
-            [posh.clj.datascript :as db]
-            [posh.lib.ratom      :as r]
-            [posh.lib.util       :as u
-              :refer [debug prl]]))
+            [datascript.core       :as d]
+            [posh.clj.datascript   :as db]
+            [posh.lib.ratom        :as r]
+            [posh.lib.util         :as u
+              :refer [debug prl]]
+            [posh.clj.common-tests :as common]))
 
 (def default-partition :db.part/default)
+
 (defn tempid [] (d/tempid default-partition))
 
 (deftest basic-test
@@ -15,20 +17,9 @@
                               {;:db/valueType   :db.type/string
                                :db/cardinality :db.cardinality/one}})
         _    (db/posh! conn)]
-    (try (let [sub (db/q [:find '?e
-                          :where ['?e :test/attr]]
-                         conn)
-               _ (is (= @sub #{}))
-               notified-times (atom 0)
-               _ (r/run! @sub (swap! notified-times inc))
-               txn-report (db/transact! conn
-                            [{:db/id      (tempid)
-                              :test/attr  "Abcde"}])
-               _ (is (= @sub
-                        @(db/q [:find '?e
-                                :where ['?e :test/attr]]
-                               conn)
-                        (d/q [:find '?e
-                              :where ['?e :test/attr]]
-                              (d/db conn))))
-               _ (is (= @notified-times 2))]))))
+    (common/basic-test conn
+      {:q         db/q
+       :q*        d/q
+       :db        d/db
+       :tempid    tempid
+       :transact! db/transact!})))

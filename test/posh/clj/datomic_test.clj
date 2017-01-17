@@ -1,22 +1,24 @@
 (ns posh.clj.datomic-test
-  (:require [clojure.test     :as test
+  (:require [clojure.test          :as test
               :refer [is deftest testing]]
-            [datomic.api      :as d]
-            [posh.clj.datomic :as db]
-            [posh.lib.ratom   :as r]
-            [posh.lib.util :as u
-              :refer [debug prl]])
+            [datomic.api           :as d]
+            [posh.clj.datomic      :as db]
+            [posh.lib.ratom        :as r]
+            [posh.lib.util         :as u
+              :refer [debug prl]]
+            [posh.clj.common-tests :as common])
   (:import posh.clj.datomic.PoshableConnection))
 
 #_(do (require '[clojure.tools.namespace.repl :refer [refresh]])
-           (refresh)
-           (set! *warn-on-reflection* true)
-           (reset! posh.lib.util/debug? true)
-(eval `(do (clojure.test/run-tests 'posh.lib.ratom-test)
-           (clojure.test/run-tests 'posh.clj.datascript-test)
-           (clojure.test/run-tests 'posh.clj.datomic-test))))
+      (reset! posh.lib.util/debug? true)
+      (refresh)
+      (set! *warn-on-reflection* true)
+      (eval `(do (clojure.test/run-tests 'posh.lib.ratom-test)
+                 (clojure.test/run-tests 'posh.clj.datascript-test)
+                 (clojure.test/run-tests 'posh.clj.datomic-test))))
 
 (def default-partition :db.part/default)
+
 (defn tempid [] (d/tempid default-partition))
 
 (defn install-partition [part]
@@ -63,39 +65,9 @@
       :db/valueType   :db.type/string
       :db/cardinality :db.cardinality/one}]
     (fn [conn]
-      (let [sub          (db/q [:find '?e :where ['?e :test/attr]] conn)
-            sub-no-deref (db/q [:find '?e :where ['?e :test/attr]] conn)
-            _ (is (= @sub #{}))
-            notified (atom 0)
-            _ (r/add-eager-watch sub :k (fn [_ _ _ _] (swap! notified inc)))
-            notified-no-deref (atom 0)
-            _ (r/add-eager-watch sub-no-deref :k-no-deref (fn [_ _ _ _] (swap! notified-no-deref inc)))]
-      (testing "Listeners are notified correctly"
-        (db/transact! conn
-          [{:db/id     (tempid)
-            :test/attr "Abcde"}])
-        (do @sub @sub @sub @sub)
-        (is (= @sub
-               @(db/q [:find '?e
-                       :where ['?e :test/attr]]
-                      conn)
-               (d/q [:find '?e
-                     :where ['?e :test/attr]]
-                     (db/db* conn))))
-        (is (= @notified 1))
-        (is (= @notified-no-deref 1))
-        (db/transact! conn
-          [{:db/id     (tempid)
-            :test/attr "Fghijk"}])
-        (do @sub @sub @sub @sub @sub)
-        (is (= @notified 2))
-        (is (= @notified-no-deref 2)))
-      (testing "Remove-watch happens correctly"
-        (remove-watch sub :k)
-        (remove-watch sub :k-no-deref)
-        (db/transact! conn
-          [{:db/id     (tempid)
-            :test/attr "Lmnop"}])
-        (do @sub @sub @sub @sub @sub @sub)
-        (is (= @notified 2))
-        (is (= @notified-no-deref 2)))))))
+      (common/basic-test conn
+        {:db        db/db*
+         :q         db/q
+         :q*        d/q
+         :tempid    tempid
+         :transact! db/transact!}))))
