@@ -1,7 +1,9 @@
 (ns posh.lib.ratom
   "Ported to .cljc from reagent.ratom by alexandergunnarson."
            (:refer-clojure :exclude [atom run!])
-           (:require        [clojure.set           :as s])
+           (:require        [clojure.set           :as s]
+                            [posh.lib.util
+                              :refer [#?(:clj if-cljs)]])
   #?(:cljs (:require-macros [posh.lib.ratom
                               :refer [getm setm! getf setf! add! array-list alength* aset* aget*]]))
   #?(:clj  (:import         [java.util ArrayList]
@@ -10,17 +12,6 @@
 ;;; Misc utils
 
 (defn upper-first [s] (apply str (.toUpperCase (str (first s))) (rest s)))
-
-(defn cljs-env?
-  "Given an &env from a macro, tells whether it is expanding into CLJS."
-  [env]
-  (boolean (:ns env)))
-
-#?(:clj
-(defmacro if-cljs
-  "Return @then if the macro is generating CLJS code and @else for CLJ code."
-  {:from "https://groups.google.com/d/msg/clojurescript/iBY5HaQda4A/w1lAQi9_AwsJ"}
-  ([env then else] `(if (cljs-env? ~env) ~then ~else))))
 
 ;;; Mutability
 
