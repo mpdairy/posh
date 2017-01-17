@@ -243,14 +243,15 @@
     (swap! -running + (- (count new) (count old))))
   new)
 
-(defn- add-w [#?(:clj ^IHasWatches this :cljs this) key f]
+(defn- add-w [#?(:clj ^IHasWatches this :cljs this) k f]
   (let [w (getf this watches)]
-    (setf! this watches (check-watches w (assoc w key f)))
+    (setf! this watches (check-watches w (assoc w k f)))
     (setf! this watchesArr nil)))
 
-(defn- remove-w [#?(:clj ^IHasWatches this :cljs this) key]
+(defn- remove-w [#?(:clj ^IHasWatches this :cljs this) k]
   (let [w (getf this watches)]
-    (setf! this watches (check-watches w (dissoc w key)))
+    ((get w k)) ; Zero-arity is called upon removal for cleanup
+    (setf! this watches (check-watches w (dissoc w k)))
     (setf! this watchesArr nil)))
 
 (defn- notify-w [#?(:clj ^IHasWatches this :cljs this) old new]
@@ -623,7 +624,7 @@
           old (set (getum watching))]
       (setum! watching derefed)
       (doseq [#?(:clj ^IRef w :cljs w) (s/difference new old)]
-        (#?(:clj .addWatch :cljs -add-watch) w this handle-reaction-change))
+        (#?(:clj .addWatch :cljs -add-watch) w this (fn ([]) ([k a o n] (handle-reaction-change k a o n)))))
       (doseq [#?(:clj ^IRef w :cljs w) (s/difference old new)]
         (#?(:clj .removeWatch :cljs -remove-watch) w this))))
 
@@ -909,14 +910,17 @@
      (deref co#)
      co#)))
 
-(defn add-eager-watch [r k f]
+(defn add-eager-watch
+  ([r k f] (add-eager-watch r k f (fn [])))
+  ([r k f on-dispose]
   (let [deref-times (atom 0)
-        f' (fn [k a oldv newv]
-             (when (> #?(:clj  (long @deref-times)
-                         :cljs @deref-times) 0)
-               (f k a oldv newv)))]
-    (run! @r (swap! deref-times inc)) ; TODO deregister when `remove-watch`
-    (add-watch r k f')))
+        runner (run! @r (swap! deref-times inc))
+        f' (fn ([] (.dispose #?(:clj ^IDisposable runner :cljs runner)))
+               ([k a oldv newv]
+                 (when (> #?(:clj  (long @deref-times)
+                             :cljs @deref-times) 0)
+                   (f k a oldv newv))))]
+    (add-watch r k f'))))
 
 #?(:clj
 (defmacro with-let [bindings & body]
