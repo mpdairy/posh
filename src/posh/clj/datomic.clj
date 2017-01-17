@@ -2,7 +2,7 @@
   (:require [posh.plugin-base :as base]
             [posh.lib.ratom :as rx]
             [clojure.core.async :as async
-              :refer [thread <!!]]
+              :refer [thread offer! <!! promise-chan]]
             [datomic.api :as d]
             [posh.lib.util :as u
               :refer [debug]]))
@@ -15,37 +15,63 @@
   (start [this])
   (stop  [this]))
 
-(defrecord PoshableConnection [datomic-conn listeners interrupted?]
+(defn normalized-tx-report [{:keys [db-after] :as tx-report}]
+  (update tx-report :tx-data
+    (fn [datoms] (mapv #(datom->seq db-after %) datoms))))
+
+(defn run-listeners! [pconn tx-report']
+  (try (doseq [[_ callback] @(:listeners pconn)] (callback tx-report'))
+       (catch Throwable e (debug "WARNING:" e))))
+
+(defrecord PoshableConnection [datomic-conn listeners deduplicate-tx-idents interrupted?]
   Lifecycle
   (start [this]
     (assert (instance? datomic.Connection datomic-conn))
     (assert (instance? clojure.lang.IAtom listeners))
     (assert (instance? clojure.lang.IAtom interrupted?))
+    @(d/transact datomic-conn
+       [{:db/id                 (d/tempid :db.part/db)
+         :db.install/_attribute :db.part/db
+         :db/ident              :posh.clj.datomic.tx-notifier/value
+         :db/cardinality        :db.cardinality/one
+         :db/valueType          :db.type/uuid}
+        {:db/id    (d/tempid :db.part/db)
+         :db/ident ::tx-notifier}])
     (thread
       (loop []
         (when-not @interrupted?
                      ; `poll` because if `take`, still won't be nil or stop waiting when conn is released
-          (when-let [{:keys [db-after] :as txn-report}
+                     ; the poll time is how long it will take to shut down when that time comes
+          (when-let [{:keys [db-after] :as tx-report}
                        (.poll ^java.util.concurrent.BlockingQueue
                               (d/tx-report-queue datomic-conn)
                               1
                               java.util.concurrent.TimeUnit/SECONDS)]
-            (debug "txn-report received in PoshableConnection")
-            (try (let [txn-report' (update txn-report :tx-data
-                                     (fn [datoms] (map #(datom->seq db-after %) datoms)))]
-                   (doseq [[_ callback] @listeners]
-                     (callback txn-report')))
-                 (catch Throwable e (debug "WARNING:" e)))
+            (try (let [{:keys [tx-data] :as tx-report'} (normalized-tx-report tx-report)
+                       last-tx-item (last tx-data)
+                       tx-ident (when (and last-tx-item
+                                           (= (d/ident db-after (get last-tx-item 0)) ::tx-notifier)
+                                           (= (d/ident db-after (get last-tx-item 1)) :posh.clj.datomic.tx-notifier/value))
+                                  (get last-tx-item 2))]
+                   (try (debug "tx-report received in PoshableConnection")
+                        (when-not (get @deduplicate-tx-idents tx-ident)
+                          (run-listeners! this tx-report'))
+                     (finally
+                       (swap! deduplicate-tx-idents
+                         (fn [m] (when-let [_ (get m tx-ident)] (debug "CCC" tx-ident))
+                                 (disj m tx-ident))))))
+              (catch Throwable e (debug "WARNING:" e)))
             (recur)))))
     this)
   (stop [this]
     (reset! interrupted? true)
+    (swap! deduplicate-tx-idents empty)
     this))
 
 (defn ->poshable-conn [datomic-conn]
   {:pre [(instance? datomic.Connection datomic-conn)]}
   (let [listeners (atom nil)]
-    (with-meta (start (PoshableConnection. datomic-conn listeners (atom false)))
+    (with-meta (start (PoshableConnection. datomic-conn listeners (atom #{}) (atom false)))
                {:listeners listeners})))
 
 (defn conn? [x] (instance? PoshableConnection x))
@@ -76,8 +102,19 @@
 (defn q* [q x & args]
   (apply d/q q (db* x) args))
 
-(defn transact!* [x txn & args]
-  @(apply d/transact (->conn x) txn args)) ; TODO do we want it to block?
+(defn transact!*
+  "The main point of the additions onto Datomic's base `transact` fn is to wait for related
+   listeners to be run before returning."
+  [conn tx]
+  {:pre [(conn? conn)]}
+  (let [tx-ident  (d/squuid)
+        _ (debug "CCC!!" tx-ident)
+        _          (swap! (:deduplicate-tx-idents conn) conj tx-ident)
+        tx-report  @(d/transact (->conn conn)
+                      (conj (vec tx) [:db/add ::tx-notifier :posh.clj.datomic.tx-notifier/value tx-ident]))
+        tx-report' (normalized-tx-report tx-report)
+        _          (run-listeners! conn tx-report')]
+    tx-report'))
 
 (def dcfg
   (let [dcfg {:db            db*

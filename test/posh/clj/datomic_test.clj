@@ -8,12 +8,13 @@
               :refer [debug prl]])
   (:import posh.clj.datomic.PoshableConnection))
 
-#_(do (set! *warn-on-reflection* true)
-    (reset! posh.lib.util/debug? true)
-    #_(load-file "./src/posh/plugin_base.cljc")
-    (load-file "./src/posh/clj/datomic.clj")
-     (load-file "./test/posh/clj/datomic_test.clj")
-     (eval '(clojure.test/run-tests 'posh.clj.datomic-test)))
+#_(do (require '[clojure.tools.namespace.repl :refer [refresh]])
+           (refresh)
+           (set! *warn-on-reflection* true)
+           (reset! posh.lib.util/debug? true)
+(eval `(do (clojure.test/run-tests 'posh.lib.ratom-test)
+           (clojure.test/run-tests 'posh.clj.datascript-test)
+           (clojure.test/run-tests 'posh.clj.datomic-test))))
 
 (def default-partition :db.part/default)
 (defn tempid [] (d/tempid default-partition))
@@ -41,7 +42,7 @@
                      (->> schemas
                           (map #(assoc % :db/id (d/tempid :db.part/db)
                                          :db.install/_attribute :db.part/db))))
-        txn-id     (-> txn-report :tx-data ^datomic.Datom first .tx)
+        txn-id     (-> txn-report :tx-data first (get 3))
         _ #_(deref (d/sync (db/->conn conn) (java.util.Date. (System/currentTimeMillis))) 500 nil)
             (deref (d/sync-schema (db/->conn conn) (inc txn-id)) 500 nil)] ; frustratingly, doesn't even work with un-`inc`ed txn-id
     txn-report))
@@ -65,7 +66,6 @@
                  txn-report (db/transact! conn
                               [{:db/id     (tempid)
                                 :test/attr "Abcde"}])
-                 _ (Thread/sleep 1000)
                  _ (is (= @sub
                           @(db/q [:find '?e
                                   :where ['?e :test/attr]]
