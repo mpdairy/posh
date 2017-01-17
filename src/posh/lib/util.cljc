@@ -33,7 +33,7 @@
 
 ;;; LOGGING ;;;
 
-(defonce debug? (atom true))
+(defonce debug? (atom false))
 
 #?(:clj
 (defmacro debug [msg & args]
