@@ -2,7 +2,9 @@
   (:require [posh.core :as p]
             [posh.stateful :as ps]
             [posh.lib.db :as db]
-            [posh.lib.update :as u]))
+            [posh.lib.update :as u]
+            [posh.lib.util
+              :refer [debug]]))
 
 (defn missing-pull-result
   [dcfg pull-expr]
@@ -29,17 +31,18 @@
 (defn set-conn-listener! [dcfg posh-atom conn db-id]
   (let [posh-vars {:posh-atom posh-atom
                    :db-id     db-id}
-        #_conn    #_(vary-meta conn update :listeners #(if (nil? %) (atom nil) %))
         conn      ((or (:->poshable-conn dcfg) identity) conn)]
     (assert-listeners conn)
     (do
       ((:listen! dcfg) conn :posh-dispenser
         (fn [var]
+          (debug "posh-dispenser" var)
           (when (keyword? var)
             (get posh-vars var))))
       ;; Update posh conn
       ((:listen! dcfg) conn :posh-listener
         (fn [tx-report]
+          (debug "posh-listener" tx-report)
           ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
           (let [{:keys [ratoms changed]}
                 (swap! posh-atom p/after-transact {conn tx-report})]
