@@ -1,4 +1,5 @@
-(ns posh.lib.datascript)
+(ns posh.lib.datascript
+  "General DataScript utils.")
 
 (defn conn->schema [conn] (:schema @conn))
 
