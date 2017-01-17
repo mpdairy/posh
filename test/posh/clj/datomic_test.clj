@@ -60,14 +60,18 @@
                             :where ['?e :test/attr]]
                            conn)
                  _ (is (= @sub #{}))
+                 notified-times (atom 0)
+                 _ (r/run! @sub (swap! notified-times inc))
                  txn-report (db/transact! conn
-                              [{:db/id (tempid)
-                                :test/attr  "Abcde"}])
+                              [{:db/id     (tempid)
+                                :test/attr "Abcde"}])
+                 _ (Thread/sleep 1000)
                  _ (is (= @sub
                           @(db/q [:find '?e
                                   :where ['?e :test/attr]]
                                  conn)
                           (d/q [:find '?e
                                 :where ['?e :test/attr]]
-                                (db/db* conn))))])
+                                (db/db* conn))))
+                 _ (is (= @notified-times 2))])
            (finally (db/stop conn)))))) ; TODO `unposh!`

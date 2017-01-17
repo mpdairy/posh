@@ -19,6 +19,8 @@
                           :where ['?e :test/attr]]
                          conn)
                _ (is (= @sub #{}))
+               notified-times (atom 0)
+               _ (r/run! @sub (swap! notified-times inc))
                txn-report (db/transact! conn
                             [{:db/id      (tempid)
                               :test/attr  "Abcde"}])
@@ -28,4 +30,5 @@
                                conn)
                         (d/q [:find '?e
                               :where ['?e :test/attr]]
-                              (d/db conn))))]))))
+                              (d/db conn))))
+               _ (is (= @notified-times 2))]))))
