@@ -1,11 +1,13 @@
 (ns posh.lib.ratom
   "Ported to .cljc from reagent.ratom by alexandergunnarson."
            (:refer-clojure :exclude [atom run!])
-           (:require        [clojure.set           :as s]
+           (:require        [#?(:clj  clojure.core
+                                :cljs cljs.core) :as core]
+                            [clojure.set  :as s]
                             [posh.lib.util
                               :refer [#?(:clj if-cljs)]])
   #?(:cljs (:require-macros [posh.lib.ratom
-                              :refer [getm setm! getum setum! getf setf! add! array-list alength* aset* aget* umut]]))
+                              :refer [getm setm! getum setum! getf setf! add! array-list alength* aset* aget* umut run!]]))
   #?(:clj  (:import         [java.util ArrayList]
                             [clojure.lang IDeref IAtom IRef IMeta IHashEq])))
 
@@ -819,12 +821,10 @@
   (setChanged  [v])))
 
 (deftype Wrapper
-  #?(:clj  [^:mutable state callback
-            ^:mutable changed
-            ^:mutable watches]
-     :cljs [^:mutable state callback
-            ^:mutable ^boolean changed
-            ^:mutable watches])
+  [^:mutable state callback
+   #?(:clj  ^:mutable changed
+      :cljs ^:mutable ^boolean changed)
+   ^:mutable watches]
   #?(:cljs IAtom)
 
   IDeref
@@ -877,11 +877,26 @@
   (getChanged  [this]   (getum changed))
   (setChanged  [this v] (setum! changed v))]))
 
-#_(:cljs
-(defn make-wrapper [value callback-fn args]
-  (Wrapper. (umut value)
-            (reagent.impl.util/partial-ifn. callback-fn args nil)
-            (umut false) (umut nil))))
+(deftype PartialIFn [f args ^:mutable p]
+  #?(:clj clojure.lang.IFn :cljs IFn)
+  (#?(:clj invoke :cljs -invoke) [_ & a]
+    (or p (setum! p (apply core/partial f args)))
+    (apply p a))
+  #?(:clj Object :cljs IEquiv)
+  (#?(:clj equals :cljs -equiv) [_ other]
+    (and (= f (.-f ^PartialIFn other)) (= args (.-args ^PartialIFn other))))
+  #?(:clj IHashEq :cljs IHash)
+  (#?(:clj hasheq :cljs -hash) [_] (hash [f args])))
+
+(defn make-wrapper
+  ([value callback-fn]
+    (Wrapper. (umut value)
+              callback-fn
+              (umut false) (umut nil)))
+  ([value callback-fn args]
+    (Wrapper. (umut value)
+              (PartialIFn. callback-fn args (umut nil))
+              (umut false) (umut nil))))
 
 #?(:cljs ; TODO CLJ
 (defn rswap!
@@ -915,6 +930,15 @@
   `(let [co# (make-reaction (fn [] ~@body) :auto-run true)]
      (deref co#)
      co#)))
+
+(defn add-eager-watch [r k f]
+  (let [deref-times (atom 0)
+        f' (fn [k a oldv newv]
+             (when (> #?(:clj  (long @deref-times)
+                         :cljs @deref-times) 0)
+               (f k a oldv newv)))]
+    (run! @r (swap! deref-times inc)) ; TODO deregister when `remove-watch`
+    (add-watch r k f')))
 
 #?(:clj
 (defmacro with-let [bindings & body]
