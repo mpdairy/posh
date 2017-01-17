@@ -36,13 +36,13 @@
     (do
       ((:listen! dcfg) conn :posh-dispenser
         (fn [var]
-          (debug "posh-dispenser" var)
+          #_(debug "posh-dispenser" var)
           (when (keyword? var)
             (get posh-vars var))))
       ;; Update posh conn
       ((:listen! dcfg) conn :posh-listener
         (fn [tx-report]
-          (debug "posh-listener" tx-report)
+          #_(debug "posh-listener" tx-report)
           ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
           (let [{:keys [ratoms changed]}
                 (swap! posh-atom p/after-transact {conn tx-report})]
