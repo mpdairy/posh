@@ -9,7 +9,8 @@
   :plugins [[lein-cljsbuild "1.1.3"]]
   :profiles {:dev {:dependencies [[datascript "0.15.0"]
                                   [com.datomic/datomic-free "0.9.5344"]
-                                  [org.clojure/core.async "0.2.391"]]}}
+                                  [org.clojure/core.async "0.2.391"]
+                                  [org.clojure/tools.namespace "0.2.11"]]}}
   :cljsbuild {
               :builds [ {:id "posh"
                          :source-paths ["src/"]
