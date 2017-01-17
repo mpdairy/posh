@@ -82,4 +82,10 @@
                            :where ['?e :test/attr]]
                            (db/db* conn))))
             _ (is (= @notified 1))
-            _ (is (= @notified-no-deref 1))]))))
+            _ (is (= @notified-no-deref 1))
+            txn-report (db/transact! conn
+                         [{:db/id     (tempid)
+                           :test/attr "Fghijk"}])
+            _ (do @sub @sub @sub @sub @sub)
+            _ (is (= @notified 2))
+            _ (is (= @notified-no-deref 2))]))))
