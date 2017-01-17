@@ -57,15 +57,17 @@
                               [{:db/ident       :test/attr
                                 :db/valueType   :db.type/string
                                 :db/cardinality :db.cardinality/one}])
-                 sub (db/q [:find '?e
-                            :where ['?e :test/attr]]
-                           conn)
+                 sub          (db/q [:find '?e :where ['?e :test/attr]] conn)
+                 sub-no-deref (db/q [:find '?e :where ['?e :test/attr]] conn)
                  _ (is (= @sub #{}))
-                 notified-times (atom 0)
-                 _ (r/run! @sub (swap! notified-times inc))
+                 notified (atom 0)
+                 _ (r/add-eager-watch sub :k (fn [_ _ _ _] (swap! notified inc)))
+                 notified-no-deref (atom 0)
+                 _ (r/add-eager-watch sub-no-deref :k-no-deref (fn [_ _ _ _] (swap! notified-no-deref inc)))
                  txn-report (db/transact! conn
                               [{:db/id     (tempid)
                                 :test/attr "Abcde"}])
+                 _ (do @sub @sub @sub @sub)
                  _ (is (= @sub
                           @(db/q [:find '?e
                                   :where ['?e :test/attr]]
@@ -73,5 +75,6 @@
                           (d/q [:find '?e
                                 :where ['?e :test/attr]]
                                 (db/db* conn))))
-                 _ (is (= @notified-times 2))])
+                 _ (is (= @notified 1))
+                 _ (is (= @notified-no-deref 1))])
            (finally (db/stop conn)))))) ; TODO `unposh!`
