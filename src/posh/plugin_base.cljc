@@ -53,12 +53,12 @@
 
 ; TODO allow for `unposh!` or some such thing
 ; TODO warn if calling `posh!` multiple times on same conn
-(defn posh! [dcfg & conns]
+(defn posh!* [dcfg conns retrieve]
   (let [posh-atom (atom {})]
     (reset! posh-atom
             (loop [n 0
                    conns conns
-                   posh-tree (-> (p/empty-tree dcfg [:results])
+                   posh-tree (-> (p/empty-tree dcfg retrieve)
                                  (assoc :ratoms {}
                                         :reactions {}))]
               (if (empty? conns)
@@ -70,6 +70,12 @@
                                    db-id
                                    (set-conn-listener! dcfg posh-atom (first conns) db-id)
                                    (when-let [f (:conn->schema dcfg)] (f (first conns)))))))))))
+
+(defn posh! [dcfg & conns] (posh!* dcfg conns [:results]))
+
+(defn posh-one!
+  ([dcfg conn] (posh-one! dcfg conn [:results]))
+  ([dcfg conn retrieve] (posh!* dcfg [conn] retrieve)))
 
 ;; Posh's state atoms are stored inside a listener in the meta data of
 ;; the datascript conn
@@ -242,6 +248,7 @@
        (def ~'safe-pull           (partial posh.plugin-base/safe-pull           ~dcfg))
        (def ~'set-conn-listener!  (partial posh.plugin-base/set-conn-listener!  ~dcfg))
        (def ~'posh!               (partial posh.plugin-base/posh!               ~dcfg))
+       (def ~'posh-one!           (partial posh.plugin-base/posh-one!           ~dcfg))
        (def ~'get-conn-var        (partial posh.plugin-base/get-conn-var        ~dcfg))
        (def ~'get-posh-atom       (partial posh.plugin-base/get-posh-atom       ~dcfg))
        (def ~'get-db              (partial posh.plugin-base/get-db              ~dcfg))

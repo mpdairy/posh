@@ -1,16 +1,16 @@
 (ns posh.clj.datomic-test
-  (:require [clojure.test     :as test
+  (:require [clojure.test          :as test
               :refer [is deftest testing]]
-            [datomic.api      :as d]
-            [posh.clj.datomic :as db]
-            [posh.lib.datomic :as ldb]
-            [posh.lib.ratom   :as r]
-            [posh.lib.util    :as u
+            [datomic.api           :as d]
+            [posh.clj.datomic      :as db]
+            [posh.lib.datomic      :as ldb]
+            [posh.lib.ratom        :as r]
+            [posh.lib.util         :as u
               :refer [debug prl]]
             [posh.clj.common-tests :as common]))
 
 (deftest basic-test
-  (ldb/with-posh-conn "datomic:mem://test"
+  (ldb/with-posh-conn [:results] "datomic:mem://test"
     [{:db/ident       :test/attr
       :db/valueType   :db.type/string
       :db/cardinality :db.cardinality/one}]

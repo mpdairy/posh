@@ -1,4 +1,5 @@
 (ns posh.clj.datomic
+  "The public API of Posh's Datomic implementation (for Clojure)."
   (:require [posh.plugin-base :as base]
             [posh.lib.ratom :as rx]
             [clojure.core.async :as async

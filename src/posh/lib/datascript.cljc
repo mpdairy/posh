@@ -1,5 +1,10 @@
 (ns posh.lib.datascript
-  "General DataScript utils.")
+  "General DataScript utils."
+  (:require [datascript.core :as d]))
+
+(def default-partition :db.part/default)
+
+(defn tempid [] (d/tempid default-partition))
 
 (defn conn->schema [conn] (:schema @conn))
 

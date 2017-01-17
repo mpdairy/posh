@@ -36,10 +36,10 @@
            (finally (d/release conn))))
     (finally (d/delete-database uri))))
 
-(defn with-posh-conn [uri schemas f]
+(defn with-posh-conn [retrieve uri schemas f]
   (with-conn uri
     (fn [conn*]
-      (let [poshed (db/posh! conn*) ; This performs a `with-meta` so the result is needed
+      (let [poshed (db/posh-one! conn* retrieve) ; This performs a `with-meta` so the result is needed
             conn   (-> poshed :conns :conn0) ; Has the necessary meta ; TODO simplify this
             _      (assert (instance? PoshableConnection conn))]
         (try (let [txn-report (db/transact! conn (install-partition default-partition))

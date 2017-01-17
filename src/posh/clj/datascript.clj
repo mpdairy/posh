@@ -1,4 +1,5 @@
 (ns posh.clj.datascript
+  "The public API of Posh's DataScript implementation for Clojure."
   (:require [posh.plugin-base :as base]
             [posh.lib.ratom :as rx]
             [posh.lib.datascript :as ldb]
