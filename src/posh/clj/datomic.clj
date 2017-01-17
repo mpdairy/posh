@@ -19,6 +19,7 @@
   Lifecycle
   (start [this]
     (assert (instance? datomic.Connection datomic-conn))
+    (assert (instance? clojure.lang.IAtom listeners))
     (assert (instance? clojure.lang.IAtom interrupted?))
     (thread
       (loop []
@@ -57,7 +58,7 @@
 (defn assert-pconn [x] (assert (instance? PoshableConnection x)))
 
 (defn listen!
-  ([conn callback] (listen! conn (rand) callback))
+  ([conn callback] (listen! conn (gensym) callback))
   ([conn key callback]
      {:pre [(conn? conn)]}
      (swap! (:listeners (meta conn)) assoc key callback)
