@@ -13,3 +13,10 @@
     (fn [_ _ old-state new-state]
       (when (not= (:schema old-state) (:schema new-state))
         (swap! posh-atom assoc-in [:schema db-id] (:schema new-state))))))
+
+(defn ->schema [schema]
+  (->> schema
+       (map (fn [[k v]] [k (if (-> v :db/valueType (not= :db.type/ref))
+                               (dissoc v :db/valueType)
+                               v)]))
+       (into {})))
