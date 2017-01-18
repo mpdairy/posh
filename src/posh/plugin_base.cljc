@@ -69,9 +69,10 @@
                          (p/add-db posh-tree
                                    db-id
                                    (set-conn-listener! dcfg posh-atom (first conns) db-id)
-                                   (when-let [f (:conn->schema dcfg)] (f (first conns)))))))))))
+                                   (when-let [f (:conn->schema dcfg)] (f (first conns)))))))))
+    posh-atom))
 
-(defn posh! [dcfg & conns] (posh!* dcfg conns [:results]))
+(defn posh! [dcfg & conns] @(posh!* dcfg conns [:results]))
 
 (defn posh-one!
   ([dcfg conn] (posh-one! dcfg conn [:results]))

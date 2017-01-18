@@ -10,13 +10,12 @@
             [posh.clj.common-tests :as common]))
 
 (deftest basic-test
-  (ldb/with-posh-conn [:results] "datomic:mem://test"
-    [{:db/ident       :test/attr
-      :db/valueType   :db.type/string
-      :db/cardinality :db.cardinality/one}]
-    (fn [conn]
+  (ldb/with-posh-conn db/dcfg [:results] "datomic:mem://test"
+    {:test/attr {:db/valueType   :db.type/string
+                 :db/cardinality :db.cardinality/one}}
+    (fn [poshed conn]
       (common/basic-test conn
-        {:db        db/db*
+        {:db        ldb/db*
          :q         db/q
          :q*        d/q
          :tempid    ldb/tempid

@@ -3,6 +3,7 @@
               :refer [is deftest testing]]
             [datascript.core       :as d]
             [posh.clj.datascript   :as db]
+            [posh.lib.datascript   :as l]
             [posh.lib.ratom        :as r]
             [posh.lib.util         :as u
               :refer [debug prl]]
@@ -13,9 +14,9 @@
 (defn tempid [] (d/tempid default-partition))
 
 (deftest basic-test
-  (let [conn (d/create-conn {:test/attr
-                              {;:db/valueType   :db.type/string
-                               :db/cardinality :db.cardinality/one}})
+  (let [conn (d/create-conn (l/->schema {:test/attr
+                                          {:db/valueType   :db.type/string
+                                           :db/cardinality :db.cardinality/one}}))
         _    (db/posh! conn)]
     (common/basic-test conn
       {:q         db/q
