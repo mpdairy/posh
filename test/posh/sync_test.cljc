@@ -167,12 +167,12 @@
             ; TODO simplify the below using `st/datoms-t`
             necessary-datoms-dat (-> dat-tree deref :cache (get [:q q [[:db :dat] 54]]) :datoms-t :dat)
             _ (is (= necessary-datoms-dat
-                     #{[285873023222775 :permission/level 54                        13194139534315]
-                       [285873023222771 :permission/uuid  "sieojeiofja"             13194139534315]
-                       [285873023222770 :permission/uuid  "sieojeiofja"             13194139534315]
+                     #{[285873023222770 :permission/uuid  "sieojeiofja"             13194139534315]
                        [285873023222770 :task/name        "Mop Floors"              13194139534315]
+                       [285873023222771 :task/name        "Draw a picture of a cat" 13194139534315]
+                       [285873023222771 :permission/uuid  "sieojeiofja"             13194139534315]
                        [285873023222775 :permission/uuid  "sieojeiofja"             13194139534315]
-                       [285873023222771 :task/name        "Draw a picture of a cat" 13194139534315]}))
+                       [285873023222775 :permission/level 54                        13194139534315]}))
             _ (is (= @(pdat/q q dat 54)
                      #{["Draw a picture of a cat" 285873023222771 "sieojeiofja" 285873023222775 54]
                        ["Mop Floors"              285873023222770 "sieojeiofja" 285873023222775 54]}))
@@ -187,12 +187,12 @@
                         meta :posh)
             necessary-datoms-ds (-> ds-tree deref :cache (get [:q q [[:db :dat] 54]]) :datoms-t :dat)
             _ (is (= necessary-datoms-ds
-                     #{[7  :permission/uuid "sieojeiofja"             536870913]
-                       [7  :task/name       "Mop Floors"              536870913]
-                       [12 :permission/level 54                       536870913]
-                       [8  :task/name       "Draw a picture of a cat" 536870913]
-                       [8  :permission/uuid "sieojeiofja"             536870913]
-                       [12 :permission/uuid "sieojeiofja"             536870913]}))
+                     #{[7  :permission/uuid  "sieojeiofja"             536870913]
+                       [7  :task/name        "Mop Floors"              536870913]
+                       [8  :task/name        "Draw a picture of a cat" 536870913]
+                       [8  :permission/uuid  "sieojeiofja"             536870913]
+                       [12 :permission/uuid  "sieojeiofja"             536870913]
+                       [12 :permission/level 54                        536870913]}))
             _ (is (= @(pds/q q ds 54)
                      #{["Mop Floors"              7 "sieojeiofja" 12 54]
                        ["Draw a picture of a cat" 8 "sieojeiofja" 12 54]}))
