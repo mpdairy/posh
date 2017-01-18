@@ -58,7 +58,12 @@
    :person/name           {:db/valueType   :db.type/string
                            :db/cardinality :db.cardinality/one}})
 
-(defn no-task-names-filter [_ datom] (not= (second datom) :task/name))
+(defn no-task-names-filter [db datom]
+  (let [attr (if #?(:clj  (instance? datomic.Datom datom)
+                    :cljs false)
+                 (:a datom)
+                 (second datom))]
+    (not= attr :task/name)))
 
 (defn populate! [conn {:keys [tempid transact!] :as dcfg}]
   (let [matt       {:db/id (tempid) :person/name "Matt" :person/age 14}
@@ -147,11 +152,16 @@
                [:db :hux]
                54)))
 
-; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
-; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
-; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
-
-(defn listen-for-datoms! [poshed lens-ks sub]
+; TODO remove this watch when query is removed from Posh tree
+; TODO change Posh internals so datoms are calculated truly incrementally, such that a `set/difference` calculation becomes unnecessary
+(defn listen-for-changed-datoms!
+  "Given a Posh tree, a lens keysequence to the query to which to listen, and
+   a core.async channel, listens for changes in the set of datoms relevant to the
+   query in question.
+   Whatever `newv` has that `oldv` doesn't is assumed to be adds.
+   Whatever `oldv` has that `newv` doesn't is assumed to be retracts.
+   Then pipes this 'datom diff' to the provided core.async channel."
+  [poshed lens-ks sub]
   (add-watch poshed lens-ks
     (fn [ks a oldv newv]
       (let [oldv (set (get-in oldv ks))
@@ -162,14 +172,17 @@
             (when (or (seq adds) (seq retracts))
               (offer! sub {:adds adds :retracts retracts}))))))))
 
-(defn with-comms [f]
+(defn with-comms
+  "Establishes core.async communications channel for simulated server and client,
+   ensuring they are closed in a `finally` statement after calling the provided fn."
+  [f]
   (let [server-sub (chan 100)
         client-sub (chan 100)]
-    (try (go-loop []
+    (try (go-loop [] ; Simulates server-side websocket receive (client push)
            (when-let [msg (<! server-sub)]
              (debug "Received server message" msg)
              (recur)))
-         (go-loop []
+         (go-loop [] ; Simulates client-side websocket receive (server push)
            (when-let [msg (<! client-sub)]
              (debug "Received client message" msg)
              (recur)))
@@ -178,7 +191,9 @@
         (close! server-sub)
         (close! client-sub)))))
 
-; TODO use filtered DB
+; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
+; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
+; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
 #?(:clj
 (deftest local-sync:datomic<->datascript
   (ldat/with-posh-conn pdat/dcfg [:datoms-t] "datomic:mem://test"
@@ -194,11 +209,14 @@
                       [?p :permission/uuid  ?uuid]
                       [?p :permission/level ?level]]
                 ; TODO simplify the below using `st/datoms-t`
-                lens-ks [:cache [:q q [[:db :conn0] 54]] :datoms-t :conn0]
+                lens-ks          [:cache [:q q [[:db :conn0   ] 54]] :datoms-t :conn0   ]
+                lens-ks-filtered [:cache [:q q [[:db :filtered] 54]] :datoms-t :filtered]
                 ; DATOMIC
                 _ (populate! dat {:tempid ldat/tempid :transact! pdat/transact!})
                 _ (-> dat-poshed
                       (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
+                      (#(st/add-db (-> % meta :posh) :filtered dat schema {:filter no-task-names-filter}))
+                      (#(st/add-q q % 54))
                       #_(tree pdat/dcfg))
                 necessary-datoms-dat (-> dat-poshed deref (get-in lens-ks))
                 _ (is (= necessary-datoms-dat
@@ -208,7 +226,7 @@
                            [277076930200563 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200567 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200567 :permission/level 54                        13194139534315]}))
-                _ (listen-for-datoms! dat-poshed lens-ks client-sub)
+                _ (listen-for-changed-datoms! dat-poshed lens-ks client-sub)
                 _ (pdat/transact! dat [[:db/add     [:task/name "Mop Floors"             ] :task/name "Mop All Floors"]])
                 _ (pdat/transact! dat [[:db/retract [:task/name "Draw a picture of a cat"] :task/name "Draw a picture of a cat"]
                                        [:db/add     [:task/name "Mop All Floors"         ] :task/name "Mop Some Floors"]])
@@ -219,6 +237,8 @@
                 _         (populate! ds {:tempid lds/tempid :transact! pds/transact!})
                 _ (-> ds-poshed
                       (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
+                      (#(st/add-db (-> % meta :posh) :filtered ds schema {:filter no-task-names-filter}))
+                      (#(st/add-q q % 54))
                       #_(tree pds/dcfg))
                 necessary-datoms-ds (-> ds-poshed deref (get-in lens-ks))
                 _ (is (= necessary-datoms-ds
@@ -228,8 +248,7 @@
                            [8  :permission/uuid  "sieojeiofja"             536870913]
                            [12 :permission/uuid  "sieojeiofja"             536870913]
                            [12 :permission/level 54                        536870913]}))
-                _ (listen-for-datoms! ds-poshed lens-ks server-sub)
+                _ (listen-for-changed-datoms! ds-poshed lens-ks server-sub)
                 _ (pds/transact! ds [[:db/add     [:task/name "Mop Floors"             ] :task/name "Mop All Floors"]])
                 _ (pds/transact! ds [[:db/retract [:task/name "Draw a picture of a cat"] :task/name "Draw a picture of a cat"]
-                                     [:db/add     [:task/name "Mop All Floors"         ] :task/name "Mop Some Floors"]])]
-            )))))))
+                                     [:db/add     [:task/name "Mop All Floors"         ] :task/name "Mop Some Floors"]])])))))))
