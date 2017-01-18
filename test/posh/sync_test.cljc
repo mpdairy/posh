@@ -132,38 +132,6 @@
        :permission/level 10
        :permission/uuid "bmmsmsdlfds"}])))
 
-; TODO it seems this requires the datom matcher to call `seq` on a Datomic datom
-; TODO use posh.stateful for all this
-(defn tree [conn dcfg]
-  (-> (p/empty-tree dcfg [:datoms-t])
-      (p/add-db :hux conn schema)
-
-      ;; same db as :hux but without any :task/name datoms
-      (p/add-db :tasks conn schema {:filter 'no-task-names-filter}) ; TODO make so it doesn't call `resolve`
-
-      (p/add-pull [:db :hux] '[*] 3)
-      (p/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
-      (p/add-filter-pull
-       [:db :hux]
-       '[{:todo/_owner [{:category/_todo [:category/name]}]}] 1)
-      (p/add-pull
-       '[:filter-pull
-         [:db :hux]
-         [{:todo/_owner [{:category/_todo [:category/name]}]}]
-         1]
-       '[*] 3)
-      (p/add-pull '[:filter-tx [:db :hux] [[_ #{:category/name}]]]
-                  '[*] 3)
-      (p/add-q '[:find ?tname ?t ?uuid ?p ?level
-                 :in $hux ?level
-                 :where
-                 [?t :task/name ?tname]
-                 [?t :permission/uuid ?uuid]
-                 [$hux ?p :permission/uuid ?uuid]
-                 [$hux ?p :permission/level ?level]]
-               [:db :hux]
-               54)))
-
 ; TODO remove this watch when query is removed from Posh tree
 ; TODO change Posh internals so datoms are calculated truly incrementally, such that a `set/difference` calculation becomes unnecessary
 (defn listen-for-changed-datoms!
@@ -184,35 +152,57 @@
             (when (or (seq adds) (seq retracts))
               (offer! sub {:adds adds :retracts retracts}))))))))
 
+(defn sub-datoms!
+  "Registers a query to be cached and listens for changes to datoms affecting it,
+   piping datom changes to `to-chan`."
+  {:example `(sub-datoms! poshed :conn0 (chan 100) q 54)}
+  [poshed db-name to-chan q & in]
+  (apply st/add-q q (with-meta [:db db-name] {:posh poshed}) in)
+  (listen-for-changed-datoms! poshed
+    [:cache [:q q (into [[:db db-name]] in)] :datoms-t db-name]
+    to-chan))
+
 (defn with-comms
   "Establishes core.async communications channel for simulated server and client,
    ensuring they are closed in a `finally` statement after calling the provided fn."
   [f]
   (let [server-sub (chan 100)
         client-sub (chan 100)]
-    (try #_(go-loop [] ; Simulates server-side websocket receive (client push)
-           (when-let [msg (<! server-sub)]
-             (debug "Received server message" msg)
-             (recur)))
-         #_(go-loop [] ; Simulates client-side websocket receive (server push)
-           (when-let [msg (<! client-sub)]
-             (debug "Received client message" msg)
-             (recur)))
-         (f server-sub client-sub)
+    (try (f server-sub client-sub)
       (finally
         (close! server-sub)
         (close! client-sub)))))
 
+(def q
+  '[:find ?tname ?t ?uuid ?p ?level
+    :in $ ?level
+    :where
+      [?t :task/name        ?tname]
+      [?t :permission/uuid  ?uuid]
+      [?p :permission/uuid  ?uuid]
+      [?p :permission/level ?level]])
+
+(def q-filtered
+  '[:find ?t ?uuid ?p ?level
+    :in $ ?level
+    :where
+      [?t :permission/uuid  ?uuid]
+      [?p :permission/uuid  ?uuid]
+      [?p :permission/level ?level]])
+
+(defn init-db! [{:keys [conn poshed dcfg to-chan]}]
+  (populate! conn dcfg)
+  (-> poshed
+      (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
+      (#(st/add-db (-> % meta :posh) :filtered conn schema {:filter no-task-names-filter})))
+  (sub-datoms! poshed :filtered to-chan q          54)
+  (sub-datoms! poshed :filtered to-chan q-filtered 54))
+
 (defn test-filtered
-  [{:keys [poshed conn q q-filtered lens-ks lens-ks-empty lens-ks-filtered eid-0 eid-1 eid-2 tx-id to-chan]
+  [{:as args
+    :keys [poshed conn lens-ks lens-ks-empty lens-ks-filtered eid-0 eid-1 eid-2 tx-id to-chan]
     {:keys [tempid transact!] :as dcfg} :dcfg}]
-  (let [_ (populate! conn dcfg)
-        _ (-> poshed
-              (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
-              (#(-> (st/add-db (-> % meta :posh) :filtered conn schema {:filter no-task-names-filter})
-                    (doto ((fn [db] (st/add-q q          db 54)))
-                          ((fn [db] (st/add-q q-filtered db 54))))))
-              #_(tree pdat/dcfg))
+  (let [_ (init-db! args)
         necessary-datoms (-> poshed deref (get-in lens-ks))
         _ (is (= necessary-datoms
                  #{[eid-0 :permission/uuid  "sieojeiofja"             tx-id]
@@ -229,7 +219,6 @@
                    [eid-1 :permission/uuid  "sieojeiofja"             tx-id]
                    [eid-2 :permission/uuid  "sieojeiofja"             tx-id]
                    [eid-2 :permission/level 54                        tx-id]}))
-        _ (listen-for-changed-datoms! poshed lens-ks-filtered to-chan)
         _ (transact! conn [[:db/add     [:task/name     "Mop Floors"             ] :task/name       "Mop All Floors"]])
         _ (transact! conn [[:db/retract [:task/name     "Draw a picture of a cat"] :task/name       "Draw a picture of a cat"]
                            [:db/add     [:task/name     "Mop All Floors"         ] :task/name       "Mop Some Floors"]])
@@ -241,11 +230,14 @@
     (dotimes [i n] (conj! ret (<!! c)))
     (persistent! ret))))
 
+(def dcfg-dat {:tempid ldat/tempid :transact! pdat/transact!})
+(def dcfg-ds  {:tempid lds/tempid  :transact! pds/transact! })
+
 ; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
 ; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
 ; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
 #?(:clj
-(deftest local-sync:datomic<->datascript
+(deftest simple-filtered-local-sync:datomic<->datascript
   (ldat/with-posh-conn pdat/dcfg [:datoms-t] "datomic:mem://test"
     schema
     (fn [dat-poshed dat]
@@ -253,20 +245,6 @@
         (fn [server-sub client-sub]
           (let [ds        (ds/create-conn (lds/->schema schema))
                 ds-poshed (pds/posh-one! ds [:datoms-t])
-                q '[:find ?tname ?t ?uuid ?p ?level
-                    :in $ ?level
-                    :where
-                      [?t :task/name        ?tname]
-                      [?t :permission/uuid  ?uuid]
-                      [?p :permission/uuid  ?uuid]
-                      [?p :permission/level ?level]]
-                q-filtered
-                  '[:find ?t ?uuid ?p ?level
-                    :in $ ?level
-                    :where
-                      [?t :permission/uuid  ?uuid]
-                      [?p :permission/uuid  ?uuid]
-                      [?p :permission/level ?level]]
                 ; TODO simplify the below using `st/datoms-t`
                 lens-ks          [:cache [:q q          [[:db :conn0   ] 54]] :datoms-t :conn0   ]
                 ; This query will have empty results because datoms with :task/name are filtered out
@@ -275,17 +253,15 @@
             ; DATOMIC
             (test-filtered
               {:conn dat :poshed dat-poshed :to-chan client-sub
-               :q q :q-filtered q-filtered
                :lens-ks lens-ks :lens-ks-empty lens-ks-empty :lens-ks-filtered lens-ks-filtered
                :eid-0 277076930200562 :eid-1 277076930200563 :eid-2 277076930200567 :tx-id 13194139534315
-               :dcfg {:tempid ldat/tempid :transact! pdat/transact!}})
+               :dcfg dcfg-dat})
             ; DATASCRIPT
             (test-filtered
               {:conn ds :poshed ds-poshed :to-chan server-sub
-               :q q :q-filtered q-filtered
                :lens-ks lens-ks :lens-ks-empty lens-ks-empty :lens-ks-filtered lens-ks-filtered
                :eid-0 7 :eid-1 8 :eid-2 12 :tx-id 536870913
-               :dcfg {:tempid lds/tempid :transact! pds/transact!}})
+               :dcfg dcfg-ds})
             (let [server-ret (take<!! 1 server-sub)
                   client-ret (take<!! 1 client-sub)
                   _ (is (= server-ret
@@ -294,3 +270,27 @@
                   _ (is (= client-ret
                            [{:adds #{[277076930200558 :permission/uuid "sieojeiofja" 13194139534331]}
                              :retracts #{}}]))]))))))))
+
+; TODO clean up the dataset and target it more to what we need
+#?(:clj
+(deftest filtered-local-sync:datomic<->datascript
+  (ldat/with-posh-conn pdat/dcfg [:datoms-t] "datomic:mem://test"
+    schema
+    (fn [dat-poshed dat]
+      (with-comms
+        (fn [server-sub client-sub]
+          (let [ds        (ds/create-conn (lds/->schema schema))
+                ds-poshed (pds/posh-one! ds [:datoms-t])
+                ; TODO simplify the below using `st/datoms-t`
+                lens-ks-filtered [:cache [:q q-filtered [[:db :filtered] 54]] :datoms-t :filtered]]
+            (init-db! {:conn dat :poshed dat-poshed :dcfg dcfg-dat :to-chan client-sub})
+            (init-db! {:conn ds  :poshed ds-poshed  :dcfg dcfg-ds  :to-chan server-sub})
+            (go-loop [] ; Simulates server-side websocket receive (client push)
+              (when-let [msg (<! server-sub)]
+                (debug "Received server message" msg)
+                (recur)))
+            (go-loop [] ; Simulates client-side websocket receive (server push)
+              (when-let [msg (<! client-sub)]
+                (debug "Received client message" msg)
+                (recur)))
+            )))))))
