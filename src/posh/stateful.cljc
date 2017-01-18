@@ -12,10 +12,12 @@
 (defn new-posh [dcfg retrieve]
   (atom (p/empty-tree dcfg retrieve)))
 
-(defn add-db [posh-atom db-id conn schema opts]
-  (with-meta
-    (:return (reset! posh-atom (p/add-db @posh-atom db-id conn schema opts)))
-    {:posh posh-atom}))
+(defn add-db
+  ([posh-atom db-id conn schema] (add-db posh-atom db-id conn schema nil))
+  ([posh-atom db-id conn schema opts]
+    (with-meta
+      (:return (reset! posh-atom (p/add-db @posh-atom db-id conn schema opts)))
+      {:posh posh-atom})))
 
 ;;;;;;;;; adding queries  ;;;;;;;;;;
 
