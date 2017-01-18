@@ -33,28 +33,25 @@
 
 ;;; LOGGING ;;;
 
-(defonce debug? (atom false))
+(defonce debug? (atom true))
+
+#?(:clj (def print-lock (Object.))) ; to coordinate cross-thread prints
+
+(defn debug* [msg args]
+  (#?@(:clj  [locking print-lock]
+       :cljs [identity])
+    (println #?(:clj (java.util.Date.) :cljs (js/Date.))
+      #?(:clj (str "[" (.getName (Thread/currentThread)) "]") :cljs nil)
+      msg)
+    (doseq [arg args] (clojure.pprint/pprint arg))
+    (flush)))
 
 #?(:clj
-(defmacro debug [msg & args]
-  (when @debug?
-    `(let [out-str# (with-out-str
-                      (println ~(if-cljs &env `(js/Date.) `(java.util.Date.))
-                               ~(if-cljs &env nil `(str "[" (.getName (Thread/currentThread)) "]"))
-                               ~msg)
-                      ~@(for [arg args]
-                          `(clojure.pprint/pprint ~arg)))]
-       (print out-str#)
-       (flush)))))
+(defmacro debug [msg & args] (when @debug? `(debug* ~msg (vector ~@args)))))
 
 #?(:clj
 (defmacro prl
   "'Print labeled'.
    Puts each x in `xs` as vals in a map.
    The keys in the map are the quoted vals. Then prints the map."
-  [& xs]
-  (when @debug?
-    `(let [out-str# (with-out-str
-                      (clojure.pprint/pprint ~(->> xs (map #(vector (list 'quote %) %)) (into {}))))]
-       (print out-str#)
-       (flush)))))
+  [& xs] `(debug nil ~(->> xs (map #(vector (list 'quote %) %)) (into {})))))
