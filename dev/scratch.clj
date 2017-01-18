@@ -131,7 +131,7 @@
 
       ;; same db as :hux but without any :task/name datoms
       (pt/add-db :tasks conn (:schema @conn) {:filter 'scratch/no-task-names-filter})
-      
+
       (pt/add-pull [:db :hux] '[*] 3)
       (pt/add-filter-tx [:db :hux] '[[_ #{:category/name}]])
       (pt/add-filter-pull
@@ -161,15 +161,15 @@
 ;;(d/pull @conn '[*] [:task/name "jim"])
 
 (def conn3 (d/create-conn))
- 
+
 (d/transact!
  conn3
  [{:db/id -1
    :name "joe"}
- 
+
   {:db/id -2
    :name "sally"}
- 
+
   {:db/id -3
    :name "bob"}])
 
@@ -185,7 +185,7 @@
                   :schema (:schema @conn3)
                   :key :hux}])
 
-  
+
   )
 
 
@@ -225,7 +225,7 @@
                   :key [:db :conn2]}
                  54])
 
-;;; not working yet... 
+;;; not working yet...
   (qa/q-analyze-with-pulls {:q d/q}
                            [:pulls]
                            '[:find (pull ?tname '[*]) ?t ?uuid ?p ?level
@@ -346,7 +346,7 @@
 (comment
 
   (d/transact! conn '[[:db/add 5 :yoyo/ma "bingo"] [:db/add 8 :youou "hey"]])
-  
+
   (def poshtree (p/new-posh dcfg [:results]))
 
   (def hux (p/add-db poshtree :hux conn schema nil))
@@ -372,7 +372,7 @@
 
   (p/poshdb->conn filtp)
   (p/cache filtp)
-  
+
   (db/poshdb->db @poshtree filtp)
 
   (def f (d/filter @conn (fn [db datom] (do (println datom)
@@ -400,5 +400,17 @@
 
   )
 
+; @alexandergunnarson Sync testing
 
-
+#_(try #_(clojure.main/repl
+           :print  clojure.pprint/pprint
+           :caught clojure.pprint/pprint)
+       (require '[clojure.tools.namespace.repl :refer [refresh]])
+       (let [x (refresh)] (when (instance? Throwable x) (throw x)))
+       (set! *warn-on-reflection* true)
+       (eval `(do (reset! posh.lib.util/debug? true)
+                  (clojure.test/run-tests 'posh.lib.ratom-test)
+                  (clojure.test/run-tests 'posh.clj.datascript-test)
+                  (clojure.test/run-tests 'posh.clj.datomic-test)
+                  (clojure.test/run-tests 'posh.sync-test)))
+    (catch Throwable t (println t)))
