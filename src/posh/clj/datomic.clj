@@ -15,6 +15,7 @@
               :transact!     l/transact!*
               :listen!       l/listen!
               :conn?         l/conn?
+              :conn->schema  l/conn->schema
               :->poshable-conn l/->poshable-conn
               :ratom         rx/atom
               :make-reaction rx/make-reaction}]

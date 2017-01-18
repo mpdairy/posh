@@ -1,10 +1,10 @@
 (ns posh.lib.datomic
   "General Datomic utils."
-  (:require [datomic.api      :as d]
+  (:require [datomic.api        :as d]
             [clojure.core.async :as async
               :refer [thread offer! <!! promise-chan]]
-            [posh.plugin-base :as base]
-            [posh.lib.util    :as u
+            [posh.plugin-base   :as base]
+            [posh.lib.util      :as u
               :refer [debug]]))
 
 ; TODO import stuartsierra.component ?
@@ -13,12 +13,13 @@
   (start [this])
   (stop  [this]))
 
+; TODO fix
 #_(defn datom->seq [^datomic.Datom d] [(.e d) (.a d) (.v d) (.tx d) (.added d)])
 
 (defn datom->seq [db-after ^datomic.Datom d]
   [(.e d) (d/ident db-after (.a d)) (.v d) (.tx d) (.added d)])
 
-(extend-type datomic.Datom
+#_(extend-type datomic.Datom ; TODO fix
   clojure.core.protocols/CollReduce
   (coll-reduce [datom f  ] (reduce f (f) (datom->seq datom)))
   (coll-reduce [datom f v] (reduce f v   (datom->seq datom))))
@@ -78,11 +79,32 @@
 
 (defn conn? [x] (instance? PoshableConnection x))
 
+(defn ->conn [x] (if (conn? x) (:datomic-conn x) x))
+
 (defn ->poshable-conn [datomic-conn]
   {:pre [(instance? datomic.Connection datomic-conn)]}
   (let [listeners (atom nil)]
     (with-meta (start (PoshableConnection. datomic-conn listeners (atom #{}) (atom false)))
                {:listeners listeners})))
+
+(def system-ns #{"db" "db.type" "db.install" "db.part" "db.sys" "db.alter"
+                 "db.lang" "fressian" "db.unique" "db.excise" "db.bootstrap"
+                 "db.cardinality" "db.fn"})
+
+(defn conn->schema [conn]
+  {:pre [(instance? datomic.Connection conn)]}
+  (let [db (d/db conn)
+        es (d/q '[:find [?e ...]
+                  :in $ ?system-ns
+                  :where
+                  [?e :db/ident ?ident]
+                  [(namespace ?ident) ?ns]
+                  [((comp not contains?) ?system-ns ?ns)]]
+                db system-ns)]
+    (->> es
+         (map (fn [e] (let [m (d/touch (d/entity db e))]
+                        [(:db/ident m) m])))
+         (into {}))))
 
 (defn listen!
   ([conn callback] (listen! conn (gensym) callback))
@@ -94,8 +116,6 @@
 (def default-partition :db.part/default)
 
 (defn tempid [] (d/tempid default-partition))
-
-(defn ->conn [x] (if (conn? x) (:datomic-conn x) x))
 
 (defn install-partition [part]
   (let [id (d/tempid :db.part/db)]
@@ -128,13 +148,13 @@
   "This is used because, perhaps very strangely, schema changes to Datomic happen
    asynchronously."
   {:todo #{"Make more robust"}}
-  [dcfg conn schemas]
-  (let [txn-report (base/transact! dcfg conn
-                     (->> schemas
-                          (map (fn [[ident v]] (assoc v :db/ident ident
-                                                        :db/id    (d/tempid :db.part/db)
-                                                        :db.install/_attribute :db.part/db)))))
-        txn-id     (-> txn-report :tx-data first (get 3))
+  [conn schemas]
+  (let [txn-report @(d/transact conn
+                      (->> schemas
+                           (map (fn [[ident v]] (assoc v :db/ident ident
+                                                         :db/id    (d/tempid :db.part/db)
+                                                         :db.install/_attribute :db.part/db)))))
+        txn-id     (-> txn-report :tx-data ^datomic.Datom first (.tx))
         _ #_(deref (d/sync (->conn conn) (java.util.Date. (System/currentTimeMillis))) 500 nil)
             (deref (d/sync-schema (->conn conn) (inc txn-id)) 500 nil)] ; frustratingly, doesn't even work with un-`inc`ed txn-id
     txn-report))
@@ -161,10 +181,10 @@
 (defn with-posh-conn [dcfg retrieve uri schemas f]
   (with-conn uri
     (fn [conn*]
-      (let [poshed (base/posh-one! dcfg conn* retrieve) ; This performs a `with-meta` so the result is needed
+      (let [_      @(d/transact conn* (install-partition default-partition))
+            _      (transact-schemas! conn* schemas)
+            poshed (base/posh-one! dcfg conn* retrieve) ; This performs a `with-meta` so the result is needed
             conn   (-> poshed deref :conns :conn0) ; Has the necessary meta ; TODO simplify this
             _      (assert (instance? PoshableConnection conn))]
-        (try (let [txn-report (base/transact! dcfg conn (install-partition default-partition))
-                   txn-report (transact-schemas! dcfg conn schemas)]
-               (f poshed conn))
+        (try (f poshed conn)
           (finally (stop conn))))))) ; TODO `unposh!`
