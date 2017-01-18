@@ -4,6 +4,7 @@
               #?(:clj  :refer
                  :cljs :refer-macros) [is deftest testing]]
             [posh.core           :as p]
+            [posh.stateful       :as st]
     #?(:clj [datascript.core     :as ds])
     #?(:clj [posh.clj.datascript :as pds]) ; TODO CLJC
             [posh.lib.datascript :as lds]
@@ -34,7 +35,11 @@
    :todo/display-category {:db/valueType   :db.type/ref
                            :db/cardinality :db.cardinality/one}
    :todo/numbers          {:db/valueType   :db.type/long
-                           :db/cardinality :db.cardinality/many}})
+                           :db/cardinality :db.cardinality/many}
+   :permission/level      {:db/valueType   :db.type/long
+                           :db/cardinality :db.cardinality/one}
+   :permission/uuid       {:db/valueType   :db.type/string
+                           :db/cardinality :db.cardinality/one}})
 
 (defn no-task-names-filter [_ datom] (not= (second datom) :task/name))
 
@@ -126,6 +131,9 @@
 ; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
 ; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
 ; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
+
+; TODO use filtered DB
+; TODO fix NPE with `populate!`
 #?(:clj
 (deftest local-sync:datomic<->datascript
   (ldat/with-posh-conn pdat/dcfg [:datoms-t] "datomic:mem://test"
@@ -136,14 +144,24 @@
     (fn [dat-poshed dat]
       tree
       (let [;dat-tree  (tree dat pdat/dcfg)
-            dat-tree  (-> (p/empty-tree pdat/dcfg [:datoms-t])
-                          (p/add-db :dat dat schema)
-                          )
+            ;_         (populate! dat {:tempid lds/tempid :transact! pds/transact!})
+            q         '[:find ?tname ?t ?uuid ?p ?level
+                        :in $hux ?level
+                        :where
+                        [$hux ?t :task/name        ?tname]
+                        [$hux ?t :permission/uuid  ?uuid]
+                        [$hux ?p :permission/uuid  ?uuid]
+                        [$hux ?p :permission/level ?level]]
+            dat-tree  (-> (st/new-posh pdat/dcfg [:datoms-t])
+                          (st/add-db :dat dat schema)
+                          (#(st/add-q q % 54))
+                          meta :posh)
             ds        (ds/create-conn (lds/->schema schema))
             ds-poshed (pds/posh-one! ds [:datoms-t])
+            _         (populate! ds {:tempid lds/tempid :transact! pds/transact!})
+            ;sub
+            ;_ (prl dat-tree)
             ;ds-tree   (tree ds pds/dcfg)
-            ;_ (populate! dat {:tempid lds/tempid :transact! pds/transact!})
-            ;_ (populate! ds  {:tempid lds/tempid :transact! pds/transact!})
             ;ds-sub  (pds/q  [:find '?e :where ['?e :test/attr]] ds)
             ;_       (r/add-eager-watch ds-sub  :ds  (fn [k a oldv newv] (prl "DS"  a oldv newv)))
             ;dat-sub (pdat/q [:find '?e :where ['?e :test/attr]] dat)
