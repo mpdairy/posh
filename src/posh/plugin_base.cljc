@@ -47,7 +47,7 @@
           (let [{:keys [ratoms changed]}
                 (swap! posh-atom p/after-transact {conn tx-report})]
             (doseq [[k v] changed]
-              (reset! (get ratoms k) (:results v))))))
+              (when-let [r (get ratoms k)] (reset! r (:results v)))))))
       (when-let [f (:additional-listeners dcfg)] (f conn posh-atom db-id))
       conn)))
 
