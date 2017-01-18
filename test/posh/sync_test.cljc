@@ -203,6 +203,38 @@
         (close! server-sub)
         (close! client-sub)))))
 
+(defn test-filtered
+  [{:keys [poshed conn q q-filtered lens-ks lens-ks-empty lens-ks-filtered eid-0 eid-1 eid-2 tx-id to-chan]
+    {:keys [tempid transact!] :as dcfg} :dcfg}]
+  (let [_ (populate! conn dcfg)
+        _ (-> poshed
+              (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
+              (#(-> (st/add-db (-> % meta :posh) :filtered conn schema {:filter no-task-names-filter})
+                    (doto ((fn [db] (st/add-q q          db 54)))
+                          ((fn [db] (st/add-q q-filtered db 54))))))
+              #_(tree pdat/dcfg))
+        necessary-datoms (-> poshed deref (get-in lens-ks))
+        _ (is (= necessary-datoms
+                 #{[eid-0 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-0 :task/name        "Mop Floors"              tx-id]
+                   [eid-1 :task/name        "Draw a picture of a cat" tx-id]
+                   [eid-1 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-2 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-2 :permission/level 54                        tx-id]}))
+        necessary-datoms-empty (-> poshed deref (get-in lens-ks-empty))
+        _ (is (= necessary-datoms-empty nil))
+        necessary-datoms-filtered (-> poshed deref (get-in lens-ks-filtered))
+        _ (is (= necessary-datoms-filtered
+                 #{[eid-0 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-1 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-2 :permission/uuid  "sieojeiofja"             tx-id]
+                   [eid-2 :permission/level 54                        tx-id]}))
+        _ (listen-for-changed-datoms! poshed lens-ks-filtered to-chan)
+        _ (transact! conn [[:db/add     [:task/name     "Mop Floors"             ] :task/name       "Mop All Floors"]])
+        _ (transact! conn [[:db/retract [:task/name     "Draw a picture of a cat"] :task/name       "Draw a picture of a cat"]
+                           [:db/add     [:task/name     "Mop All Floors"         ] :task/name       "Mop Some Floors"]])
+        _ (transact! conn [[:db/add     [:category/name "At Home"                ] :permission/uuid "sieojeiofja"]])]))
+
 ; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
 ; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
 ; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
@@ -213,7 +245,9 @@
     (fn [dat-poshed dat]
       (with-comms
         (fn [server-sub client-sub]
-          (let [q '[:find ?tname ?t ?uuid ?p ?level
+          (let [ds        (ds/create-conn (lds/->schema schema))
+                ds-poshed (pds/posh-one! ds [:datoms-t])
+                q '[:find ?tname ?t ?uuid ?p ?level
                     :in $ ?level
                     :where
                       [?t :task/name        ?tname]
@@ -231,64 +265,19 @@
                 lens-ks          [:cache [:q q          [[:db :conn0   ] 54]] :datoms-t :conn0   ]
                 ; This query will have empty results because datoms with :task/name are filtered out
                 lens-ks-empty    [:cache [:q q          [[:db :filtered] 54]] :datoms-t :filtered]
-                lens-ks-filtered [:cache [:q q-filtered [[:db :filtered] 54]] :datoms-t :filtered]
-
-                ; DATOMIC
-                _ (populate! dat {:tempid ldat/tempid :transact! pdat/transact!})
-                _ (-> dat-poshed
-                      (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
-                      (#(-> (st/add-db (-> % meta :posh) :filtered dat schema {:filter no-task-names-filter})
-                            (doto ((fn [db] (st/add-q q          db 54)))
-                                  ((fn [db] (st/add-q q-filtered db 54))))))
-                      #_(tree pdat/dcfg))
-                necessary-datoms-dat (-> dat-poshed deref (get-in lens-ks))
-                _ (is (= necessary-datoms-dat
-                         #{[277076930200562 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200562 :task/name        "Mop Floors"              13194139534315]
-                           [277076930200563 :task/name        "Draw a picture of a cat" 13194139534315]
-                           [277076930200563 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200567 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200567 :permission/level 54                        13194139534315]}))
-                necessary-datoms-empty-dat (-> dat-poshed deref (get-in lens-ks-empty))
-                _ (is (= necessary-datoms-empty-dat nil))
-                necessary-datoms-filtered-dat (-> dat-poshed deref (get-in lens-ks-filtered))
-                _ (is (= necessary-datoms-filtered-dat
-                         #{[277076930200562 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200563 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200567 :permission/uuid  "sieojeiofja"             13194139534315]
-                           [277076930200567 :permission/level 54                        13194139534315]}))
-                _ (listen-for-changed-datoms! dat-poshed lens-ks client-sub)
-                _ (pdat/transact! dat [[:db/add     [:task/name "Mop Floors"             ] :task/name "Mop All Floors"]])
-                _ (pdat/transact! dat [[:db/retract [:task/name "Draw a picture of a cat"] :task/name "Draw a picture of a cat"]
-                                       [:db/add     [:task/name "Mop All Floors"         ] :task/name "Mop Some Floors"]])
-
-                ; DATASCRIPT
-                ds        (ds/create-conn (lds/->schema schema))
-                ds-poshed (pds/posh-one! ds [:datoms-t])
-                _         (populate! ds {:tempid lds/tempid :transact! pds/transact!})
-                _ (-> ds-poshed
-                      (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
-                      (#(-> (st/add-db (-> % meta :posh) :filtered ds schema {:filter no-task-names-filter})
-                            (doto ((fn [db] (st/add-q q          db 54)))
-                                  ((fn [db] (st/add-q q-filtered db 54))))))
-                      #_(tree pds/dcfg))
-                necessary-datoms-ds (-> ds-poshed deref (get-in lens-ks))
-                _ (is (= necessary-datoms-ds
-                         #{[7  :permission/uuid  "sieojeiofja"             536870913]
-                           [7  :task/name        "Mop Floors"              536870913]
-                           [8  :task/name        "Draw a picture of a cat" 536870913]
-                           [8  :permission/uuid  "sieojeiofja"             536870913]
-                           [12 :permission/uuid  "sieojeiofja"             536870913]
-                           [12 :permission/level 54                        536870913]}))
-                necessary-datoms-empty-ds (-> ds-poshed deref (get-in lens-ks-empty))
-                _ (is (= necessary-datoms-empty-ds nil))
-                necessary-datoms-filtered-ds (-> ds-poshed deref (get-in lens-ks-filtered))
-                _ (is (= necessary-datoms-filtered-ds
-                         #{[7  :permission/uuid  "sieojeiofja"             536870913]
-                           [8  :permission/uuid  "sieojeiofja"             536870913]
-                           [12 :permission/uuid  "sieojeiofja"             536870913]
-                           [12 :permission/level 54                        536870913]}))
-                _ (listen-for-changed-datoms! ds-poshed lens-ks server-sub)
-                _ (pds/transact! ds [[:db/add     [:task/name "Mop Floors"             ] :task/name "Mop All Floors"]])
-                _ (pds/transact! ds [[:db/retract [:task/name "Draw a picture of a cat"] :task/name "Draw a picture of a cat"]
-                                     [:db/add     [:task/name "Mop All Floors"         ] :task/name "Mop Some Floors"]])])))))))
+                lens-ks-filtered [:cache [:q q-filtered [[:db :filtered] 54]] :datoms-t :filtered]]
+            ; DATOMIC
+            (test-filtered
+              {:conn dat :poshed dat-poshed :to-chan client-sub
+               :q q :q-filtered q-filtered
+               :lens-ks lens-ks :lens-ks-empty lens-ks-empty :lens-ks-filtered lens-ks-filtered
+               :eid-0 277076930200562 :eid-1 277076930200563 :eid-2 277076930200567 :tx-id 13194139534315
+               :dcfg {:tempid ldat/tempid :transact! pdat/transact!}})
+            ; DATASCRIPT
+            (test-filtered
+              {:conn ds :poshed ds-poshed :to-chan server-sub
+               :q q :q-filtered q-filtered
+               :lens-ks lens-ks :lens-ks-empty lens-ks-empty :lens-ks-filtered lens-ks-filtered
+               :eid-0 7 :eid-1 8 :eid-2 12 :tx-id 536870913
+               :dcfg {:tempid lds/tempid :transact! pds/transact!}})
+            )))))))
