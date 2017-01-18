@@ -58,12 +58,24 @@
    :person/name           {:db/valueType   :db.type/string
                            :db/cardinality :db.cardinality/one}})
 
+(defn ->ident [db x]
+  (cond (instance? datascript.db.DB db)
+        x
+        #?@(:clj [(instance? datomic.db.Db db)
+                  (dat/ident db x)])
+        :else (throw (ex-info "Unsupported db to look up ident" {:db db :ident x}))))
+
+(defn attribute= [db attr-0 attr-1]
+  (let [attr-0 (->ident db attr-0)
+        attr-1 (->ident db attr-1)]
+    (= attr-0 attr-1)))
+
 (defn no-task-names-filter [db datom]
   (let [attr (if #?(:clj  (instance? datomic.Datom datom)
                     :cljs false)
                  (:a datom)
                  (second datom))]
-    (not= attr :task/name)))
+    (not (attribute= db attr :task/name))))
 
 (defn populate! [conn {:keys [tempid transact!] :as dcfg}]
   (let [matt       {:db/id (tempid) :person/name "Matt" :person/age 14}
@@ -208,21 +220,40 @@
                       [?t :permission/uuid  ?uuid]
                       [?p :permission/uuid  ?uuid]
                       [?p :permission/level ?level]]
+                q-filtered
+                  '[:find ?t ?uuid ?p ?level
+                    :in $ ?level
+                    :where
+                      [?t :permission/uuid  ?uuid]
+                      [?p :permission/uuid  ?uuid]
+                      [?p :permission/level ?level]]
                 ; TODO simplify the below using `st/datoms-t`
-                lens-ks          [:cache [:q q [[:db :conn0   ] 54]] :datoms-t :conn0   ]
-                lens-ks-filtered [:cache [:q q [[:db :filtered] 54]] :datoms-t :filtered]
+                lens-ks          [:cache [:q q          [[:db :conn0   ] 54]] :datoms-t :conn0   ]
+                ; This query will have empty results because datoms with :task/name are filtered out
+                lens-ks-empty    [:cache [:q q          [[:db :filtered] 54]] :datoms-t :filtered]
+                lens-ks-filtered [:cache [:q q-filtered [[:db :filtered] 54]] :datoms-t :filtered]
+
                 ; DATOMIC
                 _ (populate! dat {:tempid ldat/tempid :transact! pdat/transact!})
                 _ (-> dat-poshed
                       (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
-                      (#(st/add-db (-> % meta :posh) :filtered dat schema {:filter no-task-names-filter}))
-                      (#(st/add-q q % 54))
+                      (#(-> (st/add-db (-> % meta :posh) :filtered dat schema {:filter no-task-names-filter})
+                            (doto ((fn [db] (st/add-q q          db 54)))
+                                  ((fn [db] (st/add-q q-filtered db 54))))))
                       #_(tree pdat/dcfg))
                 necessary-datoms-dat (-> dat-poshed deref (get-in lens-ks))
                 _ (is (= necessary-datoms-dat
                          #{[277076930200562 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200562 :task/name        "Mop Floors"              13194139534315]
                            [277076930200563 :task/name        "Draw a picture of a cat" 13194139534315]
+                           [277076930200563 :permission/uuid  "sieojeiofja"             13194139534315]
+                           [277076930200567 :permission/uuid  "sieojeiofja"             13194139534315]
+                           [277076930200567 :permission/level 54                        13194139534315]}))
+                necessary-datoms-empty-dat (-> dat-poshed deref (get-in lens-ks-empty))
+                _ (is (= necessary-datoms-empty-dat nil))
+                necessary-datoms-filtered-dat (-> dat-poshed deref (get-in lens-ks-filtered))
+                _ (is (= necessary-datoms-filtered-dat
+                         #{[277076930200562 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200563 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200567 :permission/uuid  "sieojeiofja"             13194139534315]
                            [277076930200567 :permission/level 54                        13194139534315]}))
@@ -237,14 +268,23 @@
                 _         (populate! ds {:tempid lds/tempid :transact! pds/transact!})
                 _ (-> ds-poshed
                       (#(st/add-q q (with-meta [:db :conn0] {:posh %}) 54))
-                      (#(st/add-db (-> % meta :posh) :filtered ds schema {:filter no-task-names-filter}))
-                      (#(st/add-q q % 54))
+                      (#(-> (st/add-db (-> % meta :posh) :filtered ds schema {:filter no-task-names-filter})
+                            (doto ((fn [db] (st/add-q q          db 54)))
+                                  ((fn [db] (st/add-q q-filtered db 54))))))
                       #_(tree pds/dcfg))
                 necessary-datoms-ds (-> ds-poshed deref (get-in lens-ks))
                 _ (is (= necessary-datoms-ds
                          #{[7  :permission/uuid  "sieojeiofja"             536870913]
                            [7  :task/name        "Mop Floors"              536870913]
                            [8  :task/name        "Draw a picture of a cat" 536870913]
+                           [8  :permission/uuid  "sieojeiofja"             536870913]
+                           [12 :permission/uuid  "sieojeiofja"             536870913]
+                           [12 :permission/level 54                        536870913]}))
+                necessary-datoms-empty-ds (-> ds-poshed deref (get-in lens-ks-empty))
+                _ (is (= necessary-datoms-empty-ds nil))
+                necessary-datoms-filtered-ds (-> ds-poshed deref (get-in lens-ks-filtered))
+                _ (is (= necessary-datoms-filtered-ds
+                         #{[7  :permission/uuid  "sieojeiofja"             536870913]
                            [8  :permission/uuid  "sieojeiofja"             536870913]
                            [12 :permission/uuid  "sieojeiofja"             536870913]
                            [12 :permission/level 54                        536870913]}))
