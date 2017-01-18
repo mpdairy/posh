@@ -6,7 +6,7 @@
             [clojure.set         :as set]
             [#?(:clj  clojure.core.async
                 :cljs cljs.core.async)
-              :refer [offer! put! <! >! close! chan #?@(:clj [go go-loop])]]
+              :refer [offer! put! <! >! close! chan #?@(:clj [go go-loop <!!])]]
             [posh.core           :as p]
             [posh.stateful       :as st]
     #?(:clj [datascript.core     :as ds])
@@ -190,11 +190,11 @@
   [f]
   (let [server-sub (chan 100)
         client-sub (chan 100)]
-    (try (go-loop [] ; Simulates server-side websocket receive (client push)
+    (try #_(go-loop [] ; Simulates server-side websocket receive (client push)
            (when-let [msg (<! server-sub)]
              (debug "Received server message" msg)
              (recur)))
-         (go-loop [] ; Simulates client-side websocket receive (server push)
+         #_(go-loop [] ; Simulates client-side websocket receive (server push)
            (when-let [msg (<! client-sub)]
              (debug "Received client message" msg)
              (recur)))
@@ -234,6 +234,12 @@
         _ (transact! conn [[:db/retract [:task/name     "Draw a picture of a cat"] :task/name       "Draw a picture of a cat"]
                            [:db/add     [:task/name     "Mop All Floors"         ] :task/name       "Mop Some Floors"]])
         _ (transact! conn [[:db/add     [:category/name "At Home"                ] :permission/uuid "sieojeiofja"]])]))
+
+#?(:clj
+(defn take<!! [n c]
+  (let [ret (transient [])]
+    (dotimes [i n] (conj! ret (<!! c)))
+    (persistent! ret))))
 
 ; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
 ; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
@@ -280,4 +286,11 @@
                :lens-ks lens-ks :lens-ks-empty lens-ks-empty :lens-ks-filtered lens-ks-filtered
                :eid-0 7 :eid-1 8 :eid-2 12 :tx-id 536870913
                :dcfg {:tempid lds/tempid :transact! pds/transact!}})
-            )))))))
+            (let [server-ret (take<!! 1 server-sub)
+                  client-ret (take<!! 1 client-sub)
+                  _ (is (= server-ret
+                           [{:adds #{[3 :permission/uuid "sieojeiofja" 536870916]}
+                             :retracts #{}}]))
+                  _ (is (= client-ret
+                           [{:adds #{[277076930200558 :permission/uuid "sieojeiofja" 13194139534331]}
+                             :retracts #{}}]))]))))))))
