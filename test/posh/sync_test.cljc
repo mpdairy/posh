@@ -189,6 +189,8 @@
     [:cache [:q q (into [[:db db-name]] in)] :datoms-t db-name]
     to-chan))
 
+#?(:clj (defn chan-count [^clojure.core.async.impl.channels.ManyToManyChannel c] (-> c .buf count)))
+
 (defn with-channels
   "Establishes core.async communications channel for simulated server and client
    (with two logged in users and an admin, with server and client channels for each),
@@ -218,7 +220,8 @@
                    (map (fn [[k c]] [(keyword (str "<" (name k))) (async/tap c (chan 100))]))
                    (into {}))]
     (try (f (merge chans mults taps))
-      (finally (doseq [c (vals chans)] (close! c))))))
+      (finally (doseq [c (vals chans)] (close! c))
+       #?(:clj (doseq [[k c] (merge chans taps)] (assert (= 0 (chan-count c)) {:k k :ct (chan-count c)})))))))
 
 ; Retrieve users whose public information is visible
 (def user-public-q
@@ -277,7 +280,7 @@
   ([c] (<!!* c 1000))
   ([c timeout]
     (let [[v _] (alts!! [c (async/timeout timeout)])
-          c-ct (-> ^clojure.core.async.impl.channels.ManyToManyChannel c .buf count)]
+          c-ct  (chan-count c)]
       (assert (some? v))
       (assert (= c-ct 0) {:ct c-ct}) ; assert empty channel
       v))))
@@ -426,16 +429,20 @@
               ; However, due to the `dedupe` transducer, this shouldn't be an issue.
               ; TODO is there a way to, for each datom in the tx-report, determine exactly once which subs that datom needs to be sent to?
               (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
-              (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]},
+              (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]}
                             :retracts #{[1 :user/name "Matt Parker"      536870913]}}]
                 (doseq [c #{<adc <agc <mpc}]
+                  (is (= (<!!* c) datoms))))
+
+              ; @alexandergunnarson (actually, technically, an anonymous, sufficiently-privileged user) makes a commit to quantum.
+              (pds/transact! c-conn [(->git-commit dcfg-ds :quantum 2)])
+              (let [datoms {:adds     #{[15 :repo.commit/to      5             536870916]
+                                        [15 :repo.commit/content ":quantum/_2" 536870916]
+                                        [15 :repo.commit/id      :quantum/_2   536870916]}
+                            :retracts #{}}]
+                (doseq [c #{<agc <mpc}]
                   (is (= (<!!* c) datoms)))))
-            #_(pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
-
-
-            #_(pds/transact!  ds  [(->git-commit dcfg-ds  :posh 2)])
-
-            #_(is (= (take<!! 1 server-sub) ...))
+            #_(Thread/sleep 1000)
             )))))))
 
 ; ===== TODOS ===== ;
