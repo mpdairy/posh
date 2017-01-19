@@ -176,6 +176,7 @@
           (let [adds     (set/difference newv oldv)
                 retracts (set/difference oldv newv)]
             (when (or (seq adds) (seq retracts))
+              ; Send all datoms for a given transaction as a contiguous package; don't stream them separately
               (offer! sub {:adds adds :retracts retracts}))))))))
 
 (defn sub-datoms!
@@ -383,11 +384,22 @@
               (report-while-open! :alexandergunnarson-client mpc))
             (test-db-initialization dat-poshed :dat)
             (test-db-initialization ds-poshed  :ds )
-            #_(prl (query-cache ds-poshed))
             ; TODO try retracts as well
             (pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
             (pds/transact!  ds  [(->git-commit dcfg-ds  :posh 2)])
 
             #_(is (= (take<!! 1 server-sub) ...))
 
+
             )))))))
+
+; ===== TODOS ===== ;
+
+; ----- TXN FNS ----- ;
+; Register tx-fns on both server and client
+
+; ----- SCHEMA CHANGES ----- ;
+; Client -> server is easy; server -> client is less so
+
+; ----- AUTH ----- ;
+; Pretty good right now; obviously some improvements are available
