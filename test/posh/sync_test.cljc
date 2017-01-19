@@ -284,6 +284,81 @@
 (defn get-in-cache [poshed db-name q & in]
   (get-in @poshed [:cache [:q q (into [[:db db-name]] in)] :datoms-t db-name]))
 
+(defn test-db-initialization
+  [poshed type]
+  (testing "DB initialization"
+    (let [user-tx-id                      (case type :dat 13194139534315  :ds 536870913)
+          repo-tx-id                      (case type :dat 13194139534322  :ds 536870914)
+          id                              (case type :dat 277076930200556 :ds 1)
+          reified-txn-ct                  (case type :dat 1               :ds 0)
+          r                               reified-txn-ct
+          mpdairy-public                  #{[(+ id 0)        :user/username       :mpdairy                         user-tx-id]
+                                            [(+ id 0)        :user/name           "Matt Parker"                    user-tx-id]}
+          mpdairy-private                 #{[(+ id 0)        :user/location       :usa                             user-tx-id]}
+          mpdairy-admin                   #{[(+ id 0)        :user/password-hash  "mpdairy/hash"                   user-tx-id]}
+          mpdairy                         (set/union mpdairy-public mpdairy-private mpdairy-admin)
+          posh                            #{[(+ id 1)        :repo/name           :posh                            user-tx-id]
+                                            [(+ id 6  r)     :repo.commit/to      (+ id 1)                         repo-tx-id]
+                                            [(+ id 6  r)     :repo.commit/id      :posh/_0                         repo-tx-id]
+                                            [(+ id 6  r)     :repo.commit/content ":posh/_0"                       repo-tx-id]
+                                            [(+ id 7  r)     :repo.commit/to      (+ id 1)                         repo-tx-id]
+                                            [(+ id 7  r)     :repo.commit/id      :posh/_1                         repo-tx-id]
+                                            [(+ id 7  r)     :repo.commit/content ":posh/_1"                       repo-tx-id]}
+          mpdairy-private-repo            #{[(+ id 2)        :repo/name           :mpdairy-private                 user-tx-id]
+                                            [(+ id 8  r)     :repo.commit/to      (+ id 2)                         repo-tx-id]
+                                            [(+ id 8  r)     :repo.commit/id      :mpdairy-private/_0              repo-tx-id]
+                                            [(+ id 8  r)     :repo.commit/content ":mpdairy-private/_0"            repo-tx-id]
+                                            [(+ id 9  r)     :repo.commit/to      (+ id 2)                         repo-tx-id]
+                                            [(+ id 9  r)     :repo.commit/id      :mpdairy-private/_1              repo-tx-id]
+                                            [(+ id 9  r)     :repo.commit/content ":mpdairy-private/_1"            repo-tx-id]}
+
+          alexandergunnarson-public       #{[(+ id 3)        :user/username       :alexandergunnarson              user-tx-id]
+                                            [(+ id 3)        :user/name           "Alex Gunnarson"                 user-tx-id]}
+          alexandergunnarson-private      #{[(+ id 3)        :user/location       :utah                            user-tx-id]}
+          alexandergunnarson-admin        #{[(+ id 3)        :user/password-hash  "alexandergunnarson/hash"        user-tx-id]}
+          alexandergunnarson              (set/union alexandergunnarson-public alexandergunnarson-private alexandergunnarson-admin)
+          quantum                         #{[(+ id 4)        :repo/name           :quantum                         user-tx-id]
+                                            [(+ id 10 r)     :repo.commit/id      :quantum/_0                      repo-tx-id]
+                                            [(+ id 10 r)     :repo.commit/to      (+ id 4)                         repo-tx-id]
+                                            [(+ id 10 r)     :repo.commit/content ":quantum/_0"                    repo-tx-id]
+                                            [(+ id 11 r)     :repo.commit/id      :quantum/_1                      repo-tx-id]
+                                            [(+ id 11 r)     :repo.commit/content ":quantum/_1"                    repo-tx-id]
+                                            [(+ id 11 r)     :repo.commit/to      (+ id 4)                         repo-tx-id]}
+          alexandergunnarson-private-repo #{[(+ id 5)        :repo/name           :alexandergunnarson-private      user-tx-id]
+                                            [(+ id 12 r)     :repo.commit/id      :alexandergunnarson-private/_0   repo-tx-id]
+                                            [(+ id 12 r)     :repo.commit/to      (+ id 5)                         repo-tx-id]
+                                            [(+ id 12 r)     :repo.commit/content ":alexandergunnarson-private/_0" repo-tx-id]
+                                            [(+ id 13 r)     :repo.commit/content ":alexandergunnarson-private/_1" repo-tx-id]
+                                            [(+ id 13 r)     :repo.commit/to      (+ id 5)                         repo-tx-id]
+                                            [(+ id 13 r)     :repo.commit/id      :alexandergunnarson-private/_1   repo-tx-id]}]
+      (testing "user-public-q"
+        (doseq [username #{:mpdairy :alexandergunnarson}]
+          (testing username
+            (is (= (get-in-cache poshed username user-public-q)
+                   (set/union mpdairy-public alexandergunnarson-public))))))
+      (testing "user-private-q"
+        (testing :mpdairy
+          (is (= (get-in-cache poshed :mpdairy user-private-q)
+                 (set/union mpdairy-public mpdairy-private))))
+        (testing :alexandergunnarson
+          (is (= (get-in-cache poshed :alexandergunnarson user-private-q)
+                 (set/union alexandergunnarson-public alexandergunnarson-private)))))
+      (testing "user-admin-q"
+        (testing :admin
+          (is (= (get-in-cache poshed :conn0 user-admin-q)
+                 (set/union mpdairy alexandergunnarson))))
+        (doseq [username #{:mpdairy :alexandergunnarson}]
+          (testing username
+            (is (= (get-in-cache poshed username user-admin-q)
+                   nil)))))
+      (testing "repo-q"
+        (testing :mpdairy
+          (is (= (get-in-cache poshed :mpdairy repo-q)
+                 (set/union posh mpdairy-private-repo quantum))))
+        (testing :alexandergunnarson
+          (is (= (get-in-cache poshed :alexandergunnarson repo-q)
+                 (set/union quantum alexandergunnarson-private-repo posh))))))))
+
 ; A little sync test between Datomic and Clojure DataScript (i.e. ignoring websocket transport for
 ; now, but focusing on sync itself) showing that the DataScript DB really only gets the subset
 ; of the Datomic DB that it needs, and at that, only the authorized portions of that subset.
@@ -306,78 +381,12 @@
               (report-while-open! :admin-client              adc)
               (report-while-open! :mpdairy-client            mpc)
               (report-while-open! :alexandergunnarson-client mpc))
-            (testing "DB initialization"
-              (let [mpdairy-public                  #{[277076930200556 :user/username       :mpdairy                         13194139534315]
-                                                      [277076930200556 :user/name           "Matt Parker"                    13194139534315]}
-                    mpdairy-private                 #{[277076930200556 :user/location       :usa                             13194139534315]}
-                    mpdairy-admin                   #{[277076930200556 :user/password-hash  "mpdairy/hash"                   13194139534315]}
-                    mpdairy                         (set/union mpdairy-public mpdairy-private mpdairy-admin)
-                    posh                            #{[277076930200557 :repo/name           :posh                            13194139534315]
-                                                      [277076930200563 :repo.commit/to      277076930200557                  13194139534322]
-                                                      [277076930200563 :repo.commit/id      :posh/_0                         13194139534322]
-                                                      [277076930200563 :repo.commit/content ":posh/_0"                       13194139534322]
-                                                      [277076930200564 :repo.commit/to      277076930200557                  13194139534322]
-                                                      [277076930200564 :repo.commit/id      :posh/_1                         13194139534322]
-                                                      [277076930200564 :repo.commit/content ":posh/_1"                       13194139534322]}
-                    mpdairy-private-repo            #{[277076930200558 :repo/name           :mpdairy-private                 13194139534315]
-                                                      [277076930200565 :repo.commit/to      277076930200558                  13194139534322]
-                                                      [277076930200565 :repo.commit/id      :mpdairy-private/_0              13194139534322]
-                                                      [277076930200565 :repo.commit/content ":mpdairy-private/_0"            13194139534322]
-                                                      [277076930200566 :repo.commit/to      277076930200558                  13194139534322]
-                                                      [277076930200566 :repo.commit/id      :mpdairy-private/_1              13194139534322]
-                                                      [277076930200566 :repo.commit/content ":mpdairy-private/_1"            13194139534322]}
-
-                    alexandergunnarson-public       #{[277076930200559 :user/username       :alexandergunnarson              13194139534315]
-                                                      [277076930200559 :user/name           "Alex Gunnarson"                 13194139534315]}
-                    alexandergunnarson-private      #{[277076930200559 :user/location       :utah                            13194139534315]}
-                    alexandergunnarson-admin        #{[277076930200559 :user/password-hash  "alexandergunnarson/hash"        13194139534315]}
-                    alexandergunnarson              (set/union alexandergunnarson-public alexandergunnarson-private alexandergunnarson-admin)
-                    quantum                         #{[277076930200560 :repo/name           :quantum                         13194139534315]
-                                                      [277076930200567 :repo.commit/id      :quantum/_0                      13194139534322]
-                                                      [277076930200567 :repo.commit/to      277076930200560                  13194139534322]
-                                                      [277076930200567 :repo.commit/content ":quantum/_0"                    13194139534322]
-                                                      [277076930200568 :repo.commit/id      :quantum/_1                      13194139534322]
-                                                      [277076930200568 :repo.commit/content ":quantum/_1"                    13194139534322]
-                                                      [277076930200568 :repo.commit/to      277076930200560                  13194139534322]}
-                    alexandergunnarson-private-repo #{[277076930200561 :repo/name           :alexandergunnarson-private      13194139534315]
-                                                      [277076930200569 :repo.commit/id      :alexandergunnarson-private/_0   13194139534322]
-                                                      [277076930200569 :repo.commit/to      277076930200561                  13194139534322]
-                                                      [277076930200569 :repo.commit/content ":alexandergunnarson-private/_0" 13194139534322]
-                                                      [277076930200570 :repo.commit/content ":alexandergunnarson-private/_1" 13194139534322]
-                                                      [277076930200570 :repo.commit/to      277076930200561                  13194139534322]
-                                                      [277076930200570 :repo.commit/id      :alexandergunnarson-private/_1   13194139534322]}]
-                (testing "user-public-q"
-                  (doseq [username #{:mpdairy :alexandergunnarson}]
-                    (testing username
-                      (is (= (get-in-cache dat-poshed username user-public-q)
-                             (set/union mpdairy-public alexandergunnarson-public))))))
-                (testing "user-private-q"
-                  (testing :mpdairy
-                    (is (= (get-in-cache dat-poshed :mpdairy user-private-q)
-                           (set/union mpdairy-public mpdairy-private))))
-                  (testing :alexandergunnarson
-                    (is (= (get-in-cache dat-poshed :alexandergunnarson user-private-q)
-                           (set/union alexandergunnarson-public alexandergunnarson-private)))))
-                (testing "user-admin-q"
-                  (testing :admin
-                    (is (= (get-in-cache dat-poshed :conn0 user-admin-q)
-                           (set/union mpdairy alexandergunnarson))))
-                  (doseq [username #{:mpdairy :alexandergunnarson}]
-                    (testing username
-                      (is (= (get-in-cache dat-poshed username user-admin-q)
-                             nil)))))
-                (testing "repo-q"
-                  (testing :mpdairy
-                    (is (= (get-in-cache dat-poshed :mpdairy repo-q)
-                           (set/union posh mpdairy-private-repo quantum))))
-                  (testing :alexandergunnarson
-                    (is (= (get-in-cache dat-poshed :alexandergunnarson repo-q)
-                           (set/union quantum alexandergunnarson-private-repo posh)))))))
-            #_(prl (query-cache dat-poshed))
+            (test-db-initialization dat-poshed :dat)
+            (test-db-initialization ds-poshed  :ds )
+            #_(prl (query-cache ds-poshed))
             ; TODO try retracts as well
             (pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
             (pds/transact!  ds  [(->git-commit dcfg-ds  :posh 2)])
-
 
             #_(is (= (take<!! 1 server-sub) ...))
 
