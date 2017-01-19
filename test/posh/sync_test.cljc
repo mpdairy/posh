@@ -194,13 +194,15 @@
    (with two logged in users and an admin, with server and client channels for each),
    ensuring they are all closed in a `finally` statement after calling the provided fn."
   [f]
-  (let [admin-server-sub              (chan 100)
-        mpdairy-server-sub            (chan 100)
-        alexandergunnarson-server-sub (chan 100)
+  (let [; `dedupe` just in case multiple listeners with overlapping queries `offer!` the
+        ; same datoms in a row to one of these chans, which is both possible and likely.
+        admin-server-sub              (chan 100 (dedupe))
+        mpdairy-server-sub            (chan 100 (dedupe))
+        alexandergunnarson-server-sub (chan 100 (dedupe))
 
-        admin-client-sub              (chan 100)
-        mpdairy-client-sub            (chan 100)
-        alexandergunnarson-client-sub (chan 100)
+        admin-client-sub              (chan 100 (dedupe))
+        mpdairy-client-sub            (chan 100 (dedupe))
+        alexandergunnarson-client-sub (chan 100 (dedupe))
 
         chans {:>ads admin-server-sub
                :>mps mpdairy-server-sub
@@ -421,10 +423,12 @@
             (testing "Client push"
               ; @mpdairy decides to rename himself Matthew P. Dairy.
               ; This will cause multiple listeners with overlapping queries to offer the same datoms to the client receive-chan.
+              ; However, due to the `dedupe` transducer, this shouldn't be an issue.
+              ; TODO is there a way to, for each datom in the tx-report, determine exactly once which subs that datom needs to be sent to?
               (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
               (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]},
                             :retracts #{[1 :user/name "Matt Parker"      536870913]}}]
-                #_(doseq [c #{<adc <agc <mpc}]
+                (doseq [c #{<adc <agc <mpc}]
                   (is (= (<!!* c) datoms)))))
             #_(pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
 
