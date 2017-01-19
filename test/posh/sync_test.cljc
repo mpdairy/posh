@@ -6,7 +6,7 @@
             [clojure.set         :as set]
             [#?(:clj  clojure.core.async
                 :cljs cljs.core.async) :as async
-              :refer [offer! put! <! >! close! chan #?@(:clj [go go-loop <!! alts!!])]]
+              :refer [poll! offer! <! >! close! chan #?@(:clj [go go-loop <!! alts!!])]]
             [posh.core           :as p]
             [posh.stateful       :as st]
     #?(:clj [datascript.core     :as ds])
@@ -167,7 +167,6 @@
    Whatever `oldv` has that `newv` doesn't is assumed to be retracts.
    Then pipes this 'datom diff' to the provided core.async channel."
   [poshed lens-ks sub]
-  ;(prl lens-ks)
   (add-watch poshed lens-ks
     (fn [ks a oldv newv]
       (let [oldv (set (get-in oldv ks))
@@ -399,11 +398,11 @@
               (init-db! {:conn c-conn :poshed c-poshed :dcfg dcfg-ds  :admin >adc :mpdairy >mpc :alexandergunnarson >agc})
               (report-while-open! :admin-server              ads)
               (report-while-open! :mpdairy-server            mps)
-              (report-while-open! :alexandergunnarson-server mps)
+              (report-while-open! :alexandergunnarson-server ags)
 
               (report-while-open! :admin-client              adc)
               (report-while-open! :mpdairy-client            mpc)
-              (report-while-open! :alexandergunnarson-client mpc))
+              (report-while-open! :alexandergunnarson-client agc))
             (test-db-initialization s-poshed :dat)
             (test-db-initialization c-poshed :ds )
 
@@ -424,25 +423,37 @@
                       :retracts
                         #{[277076930200559 :user/password-hash "alexandergunnarson/hash"             13194139534315]}})))
             (testing "Client push"
-              ; @mpdairy decides to rename himself Matthew P. Dairy.
-              ; This will cause multiple listeners with overlapping queries to offer the same datoms to the client receive-chan.
-              ; However, due to the `dedupe` transducer, this shouldn't be an issue.
-              ; TODO is there a way to, for each datom in the tx-report, determine exactly once which subs that datom needs to be sent to?
-              (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
-              (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]}
-                            :retracts #{[1 :user/name "Matt Parker"      536870913]}}]
-                (doseq [c #{<adc <agc <mpc}]
-                  (is (= (<!!* c) datoms))))
+              (testing "Universal notification"
+                ; @mpdairy decides to rename himself Matthew P. Dairy.
+                ; This will cause multiple listeners with overlapping queries to offer the same datoms to the client receive-chan.
+                ; However, due to the `dedupe` transducer, this shouldn't be an issue.
+                ; TODO is there a way to, for each datom in the tx-report, determine exactly once which subs that datom needs to be sent to?
+                (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
+                (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]}
+                              :retracts #{[1 :user/name "Matt Parker"      536870913]}}]
+                  (doseq [c #{<adc <agc <mpc}]
+                    (is (= (<!!* c) datoms)))))
 
-              ; @alexandergunnarson (actually, technically, an anonymous, sufficiently-privileged user) makes a commit to quantum.
-              (pds/transact! c-conn [(->git-commit dcfg-ds :quantum 2)])
-              (let [datoms {:adds     #{[15 :repo.commit/to      5             536870916]
-                                        [15 :repo.commit/content ":quantum/_2" 536870916]
-                                        [15 :repo.commit/id      :quantum/_2   536870916]}
-                            :retracts #{}}]
-                (doseq [c #{<agc <mpc}]
-                  (is (= (<!!* c) datoms)))))
-            #_(Thread/sleep 1000)
+              (testing "Public notification"
+                ; @alexandergunnarson (actually, technically, an anonymous, sufficiently-privileged user) makes a commit to quantum.
+                (pds/transact! c-conn [(->git-commit dcfg-ds :quantum 2)])
+                (let [datoms {:adds     #{[15 :repo.commit/to      5             536870916]
+                                          [15 :repo.commit/content ":quantum/_2" 536870916]
+                                          [15 :repo.commit/id      :quantum/_2   536870916]}
+                              :retracts #{}}]
+                  (doseq [c #{<agc <mpc}]
+                    (is (= (<!!* c) datoms)))))
+
+              ; @mpdairy (actually, technically, an anonymous, sufficiently-privileged user) makes a commit to his private repo, `mpdairy-private`.
+              (testing "Private notification"
+                (pds/transact! c-conn [(->git-commit dcfg-ds :mpdairy-private 2)])
+                #_(prl (query-cache c-poshed))
+                (let [datoms {:adds     #{[16 :repo.commit/content ":mpdairy-private/_2" 536870917]
+                                          [16 :repo.commit/to      3                     536870917]
+                                          [16 :repo.commit/id      :mpdairy-private/_2   536870917]}
+                              :retracts #{}}]
+                  (is (= (<!!* <mpc) datoms)))))
+            (Thread/sleep 1000)
             )))))))
 
 ; ===== TODOS ===== ;
