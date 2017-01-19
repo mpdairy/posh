@@ -287,14 +287,15 @@
 (def dcfg-dat {:tempid ldat/tempid :transact! pdat/transact! :q* dat/q :entity dat/entity})
 (def dcfg-ds  {:tempid lds/tempid  :transact! pds/transact!  :q* ds/q  :entity ds/entity})
 
-(defn report-while-open! [id c]
-  (let [c' (async/tap c (chan 100))]
-    (go-loop [] ; Simulates e.g. server-side websocket receive (client push)
-                ;             or client-side websocket receive (server push)
-      (if-let [msg (<! c')]
-        (do (debug (str "Received by " id) msg)
-            (recur))
-        #_(debug (str "Report loop for " id " closed"))))))
+(defn while-open [mult-c f]
+  (let [c' (async/tap mult-c (chan 100))]
+    (go-loop []
+      (if-let [x (<! c')]
+        (do (f x)
+            (recur))))))
+
+(defn report-while-open! [id mult-c]
+  (while-open mult-c #(debug (str "Received by " id) %)))
 
 (defn query-cache [poshed]
   (->> @poshed :cache
@@ -388,21 +389,36 @@
     schema
     (fn [s-poshed s-conn]
       (with-channels
-        (fn [{:keys [>ads >mps >ags , >adc >mpc >agc
+        (fn [{:keys [>ads >mps >ags , >adc >mpc >agc ; see `with-channels` for what these stand for
                       ads  mps  ags ,  adc  mpc  agc
-                     <ads <mps <ags , <adc <mpc <agc]}] ; see `with-channels` for what these stand for
+                     <ads <mps <ags , <adc <mpc <agc]}]
           (let [c-conn   (ds/create-conn (lds/->schema schema))
                 c-poshed (pds/posh-one! c-conn [:datoms-t])]
+            ; TODO:
+            ; - Client sends to server initial subscriptions it needs
+            ; - Server replicates those subscriptions
+            ; - Server sends to client initial payload of datoms
+            ; - Client transacts initial payload of datoms; does not pipe back to server
+            ; - Simulate server transaction; sends relevant datoms to client; client does not pipe back to server
+            ; - Simulate client transaction; sends relevant datoms to server; server does not pipe back to client
+            ; - Simulate client adding   subscription
+            ; - Simulate client removing subscription (how does Posh do it?) and server correspondingly removing subscription
+
             (testing "Data insertion and datoms listeners"
               (init-db! {:conn s-conn :poshed s-poshed :dcfg dcfg-dat :admin >ads :mpdairy >mps :alexandergunnarson >ags})
               (init-db! {:conn c-conn :poshed c-poshed :dcfg dcfg-ds  :admin >adc :mpdairy >mpc :alexandergunnarson >agc})
-              (report-while-open! :admin-server              ads)
-              (report-while-open! :mpdairy-server            mps)
-              (report-while-open! :alexandergunnarson-server ags)
+              (report-while-open! :admin-server              ads) ; E.g. a Sente receive fn on one      server
+              (report-while-open! :mpdairy-server            mps) ; E.g. a Sente receive fn on the same server
+              (report-while-open! :alexandergunnarson-server ags) ; E.g. a Sente receive fn on the same server
 
-              (report-while-open! :admin-client              adc)
-              (report-while-open! :mpdairy-client            mpc)
-              (report-while-open! :alexandergunnarson-client agc))
+              (report-while-open! :admin-client              adc) ; E.g. a Sente receive fn on an admin console
+              (report-while-open! :mpdairy-client            mpc) ; E.g. a Sente receive fn on a different GitHub client
+              (report-while-open! :alexandergunnarson-client agc) ; E.g. a Sente receive fn on a different GitHub client
+
+              ; Bidirectional comms
+              ;(while-open ads (fn [c-msg] ))
+
+              )
             (test-db-initialization s-poshed :dat)
             (test-db-initialization c-poshed :ds )
 
@@ -410,22 +426,24 @@
 
             (testing "Server push"
               ; The server decides to rehash all passwords with a better hashing algorithm (don't ask if this is a good idea...)
-              (pdat/transact! s-conn [[:db/add [:user/username :mpdairy] :user/password-hash "mpdairy/hash-more-secure"]])
-              (is (= (<!!* <ads)
-                     {:adds
-                        #{[277076930200556 :user/password-hash "mpdairy/hash-more-secure" 13194139534331]}
-                      :retracts
-                        #{[277076930200556 :user/password-hash "mpdairy/hash"             13194139534315]}}))
-              (pdat/transact! s-conn [[:db/add [:user/username :alexandergunnarson] :user/password-hash "alexandergunnarson/hash-more-secure"]])
-              (is (= (<!!* <ads)
-                     {:adds
-                        #{[277076930200559 :user/password-hash "alexandergunnarson/hash-more-secure" 13194139534332]},
-                      :retracts
-                        #{[277076930200559 :user/password-hash "alexandergunnarson/hash"             13194139534315]}})))
+              (testing "Admin notification"
+                (pdat/transact! s-conn [[:db/add [:user/username :mpdairy] :user/password-hash "mpdairy/hash-more-secure"]])
+                (is (= (<!!* <ads)
+                       {:adds
+                          #{[277076930200556 :user/password-hash "mpdairy/hash-more-secure" 13194139534331]}
+                        :retracts
+                          #{[277076930200556 :user/password-hash "mpdairy/hash"             13194139534315]}}))
+                (pdat/transact! s-conn [[:db/add [:user/username :alexandergunnarson] :user/password-hash "alexandergunnarson/hash-more-secure"]])
+                (is (= (<!!* <ads)
+                       {:adds
+                          #{[277076930200559 :user/password-hash "alexandergunnarson/hash-more-secure" 13194139534332]},
+                        :retracts
+                          #{[277076930200559 :user/password-hash "alexandergunnarson/hash"             13194139534315]}}))))
             (testing "Client push"
               (testing "Universal notification"
                 ; @mpdairy decides to rename himself Matthew P. Dairy.
-                ; This will cause multiple listeners with overlapping queries to offer the same datoms to the client receive-chan.
+                ; This (and some other subsequent queries) will cause multiple listeners with overlapping queries
+                ; to offer the same datoms to the client receive-chan.
                 ; However, due to the `dedupe` transducer, this shouldn't be an issue.
                 ; TODO is there a way to, for each datom in the tx-report, determine exactly once which subs that datom needs to be sent to?
                 (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
@@ -466,4 +484,4 @@
 ; The listener will listen for schema changes and extract those
 
 ; ----- AUTH ----- ;
-; Pretty good right now; obviously some improvements are available
+; Pretty good right now; obviously some improvements could be useful
