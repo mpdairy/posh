@@ -82,7 +82,7 @@
 
 (defn update-schemas! [conn f]
   (assert (ds/conn? conn))
- (swap! conn update-schemas f))
+  (swap! conn update-schemas f))
 
 (defn merge-schemas
   "Immutably merges schemas and/or schema attributes (`schemas`) into the database `db`."

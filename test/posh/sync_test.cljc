@@ -5,8 +5,8 @@
                  :cljs :refer-macros) [is deftest testing]]
             [clojure.set         :as set]
             [#?(:clj  clojure.core.async
-                :cljs cljs.core.async)
-              :refer [offer! put! <! >! close! chan #?@(:clj [go go-loop <!!])]]
+                :cljs cljs.core.async) :as async
+              :refer [offer! put! <! >! close! chan #?@(:clj [go go-loop <!! alts!!])]]
             [posh.core           :as p]
             [posh.stateful       :as st]
     #?(:clj [datascript.core     :as ds])
@@ -172,7 +172,7 @@
     (fn [ks a oldv newv]
       (let [oldv (set (get-in oldv ks))
             newv (set (get-in newv ks))]
-        (when (not= oldv newv) (println "diff" lens-ks)
+        (when (not= oldv newv)
           (let [adds     (set/difference newv oldv)
                 retracts (set/difference oldv newv)]
             (when (or (seq adds) (seq retracts))
@@ -202,14 +202,20 @@
         mpdairy-client-sub            (chan 100)
         alexandergunnarson-client-sub (chan 100)
 
-        chans {:ads admin-server-sub
-               :mps mpdairy-server-sub
-               :ags alexandergunnarson-server-sub
+        chans {:>ads admin-server-sub
+               :>mps mpdairy-server-sub
+               :>ags alexandergunnarson-server-sub
 
-               :adc admin-client-sub
-               :mpc mpdairy-client-sub
-               :agc alexandergunnarson-client-sub}]
-    (try (f chans)
+               :>adc admin-client-sub
+               :>mpc mpdairy-client-sub
+               :>agc alexandergunnarson-client-sub}
+        mults (->> chans
+                   (map (fn [[k c]] [(->> k name rest (apply str) keyword) (async/mult c)]))
+                   (into {}))
+        taps  (->> mults
+                   (map (fn [[k c]] [(keyword (str "<" (name k))) (async/tap c (chan 100))]))
+                   (into {}))]
+    (try (f (merge chans mults taps))
       (finally (doseq [c (vals chans)] (close! c))))))
 
 ; Retrieve users whose public information is visible
@@ -251,31 +257,40 @@
   (st/add-db poshed :alexandergunnarson conn schema {:filter (user-filter dcfg :alexandergunnarson)})
   (sub-datoms! poshed :conn0                      admin              user-admin-q  )  ; admin   user info (unfiltered, i.e. from admin perspective)
 
+  ; These are all the subscriptions that @mpdairy has checked out, say, in the frontend
   (sub-datoms! poshed :mpdairy                    mpdairy            user-public-q )  ; public  user info @mpdairy            can see
   (sub-datoms! poshed :mpdairy                    mpdairy            user-private-q)  ; private user info @mpdairy            can see
   (sub-datoms! poshed :mpdairy                    mpdairy            user-admin-q  )  ; admin   user info @mpdairy            can see (i.e. none)
   (sub-datoms! poshed :mpdairy                    mpdairy            repo-q        )  ; repo         info @mpdairy            can see
 
+  ; These are all the subscriptions that @alexandergunnarson has checked out, say, in the frontend
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson user-public-q )  ; public  user info @alexandergunnarson can see
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson user-private-q)  ; private user info @alexandergunnarson can see
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson user-admin-q  )  ; admin   user info @alexandergunnarson can see (i.e. none)
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson repo-q        )) ; repo         info @alexandergunnarson can see
 
 #?(:clj
-(defn take<!! [n c]
-  (let [ret (transient [])]
-    (dotimes [i n] (conj! ret (<!! c)))
-    (persistent! ret))))
+(defn <!!*
+  "Take with timeout; assert result != nil and chan empty"
+  ([c] (<!!* c 1000))
+  ([c timeout]
+    (let [[v _] (alts!! [c (async/timeout timeout)])
+          c-ct (-> ^clojure.core.async.impl.channels.ManyToManyChannel c .buf count)]
+      (assert (some? v))
+      (assert (= c-ct 0) {:ct c-ct}) ; assert empty channel
+      v))))
 
 (def dcfg-dat {:tempid ldat/tempid :transact! pdat/transact! :q* dat/q :entity dat/entity})
 (def dcfg-ds  {:tempid lds/tempid  :transact! pds/transact!  :q* ds/q  :entity ds/entity})
 
 (defn report-while-open! [id c]
-  (go-loop [] ; Simulates e.g. server-side websocket receive (client push)
-              ;             or client-side websocket receive (server push)
-    (when-let [msg (<! c)]
-      (debug (str "Received to " id) msg)
-      (recur))))
+  (let [c' (async/tap c (chan 100))]
+    (go-loop [] ; Simulates e.g. server-side websocket receive (client push)
+                ;             or client-side websocket receive (server push)
+      (if-let [msg (<! c')]
+        (do (debug (str "Received by " id) msg)
+            (recur))
+        #_(debug (str "Report loop for " id " closed"))))))
 
 (defn query-cache [poshed]
   (->> @poshed :cache
@@ -287,7 +302,7 @@
 
 (defn test-db-initialization
   [poshed type]
-  (testing "DB initialization"
+  (testing "DB initialization and filters"
     (let [user-tx-id                      (case type :dat 13194139534315  :ds 536870913)
           repo-tx-id                      (case type :dat 13194139534322  :ds 536870914)
           id                              (case type :dat 277076930200556 :ds 1)
@@ -367,14 +382,16 @@
 (deftest filtered-local-sync:datomic<->datascript
   (ldat/with-posh-conn pdat/dcfg [:datoms-t] "datomic:mem://test"
     schema
-    (fn [dat-poshed dat]
+    (fn [s-poshed s-conn]
       (with-channels
-        (fn [{:keys [ads mps ags , adc mpc agc]}] ; see `with-channels` for what these stand for
-          (let [ds        (ds/create-conn (lds/->schema schema))
-                ds-poshed (pds/posh-one! ds [:datoms-t])]
-            (testing "Filters and reports initialization"
-              (init-db! {:conn dat :poshed dat-poshed :dcfg dcfg-dat :admin ads :mpdairy mps :alexandergunnarson ags})
-              (init-db! {:conn ds  :poshed ds-poshed  :dcfg dcfg-ds  :admin adc :mpdairy mpc :alexandergunnarson agc})
+        (fn [{:keys [>ads >mps >ags , >adc >mpc >agc
+                      ads  mps  ags ,  adc  mpc  agc
+                     <ads <mps <ags , <adc <mpc <agc]}] ; see `with-channels` for what these stand for
+          (let [c-conn   (ds/create-conn (lds/->schema schema))
+                c-poshed (pds/posh-one! c-conn [:datoms-t])]
+            (testing "Data insertion and datoms listeners"
+              (init-db! {:conn s-conn :poshed s-poshed :dcfg dcfg-dat :admin >ads :mpdairy >mps :alexandergunnarson >ags})
+              (init-db! {:conn c-conn :poshed c-poshed :dcfg dcfg-ds  :admin >adc :mpdairy >mpc :alexandergunnarson >agc})
               (report-while-open! :admin-server              ads)
               (report-while-open! :mpdairy-server            mps)
               (report-while-open! :alexandergunnarson-server mps)
@@ -382,15 +399,39 @@
               (report-while-open! :admin-client              adc)
               (report-while-open! :mpdairy-client            mpc)
               (report-while-open! :alexandergunnarson-client mpc))
-            (test-db-initialization dat-poshed :dat)
-            (test-db-initialization ds-poshed  :ds )
+            (test-db-initialization s-poshed :dat)
+            (test-db-initialization c-poshed :ds )
+
             ; TODO try retracts as well
-            (pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
-            (pds/transact!  ds  [(->git-commit dcfg-ds  :posh 2)])
+
+            (testing "Server push"
+              ; The server decides to rehash all passwords with a better hashing algorithm (don't ask if this is a good idea...)
+              (pdat/transact! s-conn [[:db/add [:user/username :mpdairy] :user/password-hash "mpdairy/hash-more-secure"]])
+              (is (= (<!!* <ads)
+                     {:adds
+                        #{[277076930200556 :user/password-hash "mpdairy/hash-more-secure" 13194139534331]}
+                      :retracts
+                        #{[277076930200556 :user/password-hash "mpdairy/hash"             13194139534315]}}))
+              (pdat/transact! s-conn [[:db/add [:user/username :alexandergunnarson] :user/password-hash "alexandergunnarson/hash-more-secure"]])
+              (is (= (<!!* <ads)
+                     {:adds
+                        #{[277076930200559 :user/password-hash "alexandergunnarson/hash-more-secure" 13194139534332]},
+                      :retracts
+                        #{[277076930200559 :user/password-hash "alexandergunnarson/hash"             13194139534315]}})))
+            (testing "Client push"
+              ; @mpdairy decides to rename himself Matthew P. Dairy.
+              ; This will cause multiple listeners with overlapping queries to offer the same datoms to the client receive-chan.
+              (pds/transact! c-conn [[:db/add [:user/username :mpdairy] :user/name "Matthew P. Dairy"]])
+              (let [datoms {:adds     #{[1 :user/name "Matthew P. Dairy" 536870915]},
+                            :retracts #{[1 :user/name "Matt Parker"      536870913]}}]
+                #_(doseq [c #{<adc <agc <mpc}]
+                  (is (= (<!!* c) datoms)))))
+            #_(pdat/transact! dat [(->git-commit dcfg-dat :posh 2)])
+
+
+            #_(pds/transact!  ds  [(->git-commit dcfg-ds  :posh 2)])
 
             #_(is (= (take<!! 1 server-sub) ...))
-
-
             )))))))
 
 ; ===== TODOS ===== ;
@@ -400,6 +441,7 @@
 
 ; ----- SCHEMA CHANGES ----- ;
 ; Client -> server is easy; server -> client is less so
+; The listener will listen for schema changes and extract those
 
 ; ----- AUTH ----- ;
 ; Pretty good right now; obviously some improvements are available
