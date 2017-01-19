@@ -77,12 +77,14 @@
     (swap! deduplicate-tx-idents empty)
     this))
 
-(defn conn? [x] (instance? PoshableConnection x))
+(defn db?            [x] (instance? datomic.Database   x))
+(defn conn?          [x] (instance? datomic.Connection x))
+(defn poshable-conn? [x] (instance? PoshableConnection x))
 
-(defn ->conn [x] (if (conn? x) (:datomic-conn x) x))
+(defn ->conn [x] (if (poshable-conn? x) (:datomic-conn x) x))
 
 (defn ->poshable-conn [datomic-conn]
-  {:pre [(instance? datomic.Connection datomic-conn)]}
+  {:pre [(conn? datomic-conn)]}
   (let [listeners (atom nil)]
     (with-meta (start (PoshableConnection. datomic-conn listeners (atom #{}) (atom false)))
                {:listeners listeners})))
@@ -92,7 +94,7 @@
                  "db.cardinality" "db.fn"})
 
 (defn conn->schema [conn]
-  {:pre [(instance? datomic.Connection conn)]}
+  {:pre [(conn? conn)]}
   (let [db (d/db conn)
         es (d/q '[:find [?e ...]
                   :in $ ?system-ns
@@ -109,7 +111,7 @@
 (defn listen!
   ([conn callback] (listen! conn (gensym) callback))
   ([conn key callback]
-    {:pre [(conn? conn)]}
+    {:pre [(poshable-conn? conn)]}
     (swap! (:listeners (meta conn)) assoc key callback)
     key))
 
@@ -128,7 +130,7 @@
   "The main point of the additions onto Datomic's base `transact` fn is to wait for related
    listeners to be run before returning."
   [conn tx]
-  {:pre [(conn? conn)]}
+  {:pre [(poshable-conn? conn)]}
   (let [; In order to ensure listeners are run only once (i.e. deduplicate them),
         ; we have to transmit to the report queue in a race-condition-free way
         ; some sort of unique ID we know ahead of time. I'd like to just use the
@@ -160,11 +162,11 @@
     txn-report))
 
 (defn db* [x]
-  (cond (instance? datomic.Database x)
+  (cond (db? x)
         x
-        (conn? x)
+        (poshable-conn? x)
         (-> x :datomic-conn d/db)
-        (instance? datomic.Connection x)
+        (conn? x)
         (d/db x)
         :else x #_(throw (ex-info "Object cannot be converted into DB" {:obj x}))))
 
@@ -185,6 +187,6 @@
             _      (transact-schemas! conn* schemas)
             poshed (base/posh-one! dcfg conn* retrieve) ; This performs a `with-meta` so the result is needed
             conn   (-> poshed deref :conns :conn0) ; Has the necessary meta ; TODO simplify this
-            _      (assert (instance? PoshableConnection conn))]
+            _      (assert (poshable-conn? conn))]
         (try (f poshed conn)
           (finally (stop conn))))))) ; TODO `unposh!`

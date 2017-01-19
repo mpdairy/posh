@@ -14,7 +14,7 @@
               :entid         d/entid
               :transact!     l/transact!*
               :listen!       l/listen!
-              :conn?         l/conn?
+              :conn?         l/poshable-conn?
               :conn->schema  l/conn->schema
               :->poshable-conn l/->poshable-conn
               :ratom         rx/atom

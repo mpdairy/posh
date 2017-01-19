@@ -1,8 +1,9 @@
 (ns posh.sync.schema
   "Schema syncing and schema alteration functions."
-  (:require [clojure.set     :as set]
-            [datascript.core :as ds]
-    #?(:clj [datomic.api     :as dat])
+  (:require [clojure.set      :as set]
+            [datascript.core  :as ds]
+    #?(:clj [datomic.api      :as dat])
+            [posh.lib.datomic :as ldat]
             [posh.lib.util :refer [dissoc-in merge-deep]]))
 
 (defn ensure-schema-changes-valid
@@ -79,38 +80,43 @@
               {:db/ident schema
                :type     [:db/ident :schema]}))))))
 
-(defn update-schemas!
-  ([conn f]
-    (assert (ds/conn? conn))
-    (swap! conn update-schemas f)))
+(defn update-schemas! [conn f]
+  (assert (ds/conn? conn))
+ (swap! conn update-schemas f))
 
 (defn merge-schemas
   "Immutably merges schemas and/or schema attributes (`schemas`) into the database `db`."
   {:usage `(merge-schemas {:task:estimated-duration {:db/valueType :db.type/long}})}
-  ([#?(:clj _ :cljs db) schemas]
-  #?(:clj  (for [[schema kvs] schemas]
-             (merge
-               {:db/id               schema
-                :db.alter/_attribute :db.part/db}
-               kvs))
-     :cljs (update-schemas db #(merge-deep % schemas)))))
+  [db schemas]
+    (if #?@(:clj [(ldat/db? db)
+                  (for [[schema kvs] schemas]
+                    (merge
+                      {:db/id               schema
+                       :db.alter/_attribute :db.part/db}
+                      kvs))]
+            :cljs [false false])
+        (update-schemas db #(merge-deep % schemas))))
 
 (defn merge-schemas!
-  "Mutably merges (transacts) schemas and/or schema attributes (`schemas`) into the database `db`."
-  ([conn schemas]
-  #?(:clj  @(dat/transact conn (merge-schemas schemas)) ; TODO may want to sync schema?
-     :cljs (swap! conn merge-schemas schemas))))
+  "Mutably merges (transacts) schemas and/or schema attributes (`schemas`) into the `conn`."
+  [conn schemas]
+    (if #?@(:clj  [(ldat/conn? conn)
+                   @(dat/transact conn (merge-schemas schemas))] ; TODO may want to sync schema?
+            :cljs [false false])
+        (swap! conn merge-schemas schemas)))
 
 (defn replace-schemas!
   "Mutably replaces schemas of the provided DataScript `conn`."
-  ([conn schemas]
+  [conn schemas]
     (assert (ds/conn? conn))
-    (swap! conn update-schemas (constantly schemas))))
+    (swap! conn update-schemas (constantly schemas)))
 
 (defn dissoc-schema!
   "Mutably dissociates a schema from `conn`."
-  ([conn s k #?(:clj v :cljs _)]
-  #?(:clj  @(dat/transact conn ; TODO may want to sync schema?
-              [[:db/retract s k v]
-               [:db/add :db.part/db :db.alter/attribute k]])
-     :cljs (update-schemas! conn #(dissoc-in % [s k])))))
+  [conn s k v]
+    (if #?@(:clj  [(ldat/conn? conn)
+                   @(dat/transact conn ; TODO may want to sync schema?
+                      [[:db/retract s k v]
+                       [:db/add :db.part/db :db.alter/attribute k]])]
+            :cljs [false false]))
+        (update-schemas! conn #(dissoc-in % [s k])))
