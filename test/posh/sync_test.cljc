@@ -256,33 +256,6 @@
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson user-admin-q  )  ; admin   user info @alexandergunnarson can see (i.e. none)
   (sub-datoms! poshed :alexandergunnarson         alexandergunnarson repo-q        )) ; repo         info @alexandergunnarson can see
 
-
-(defn test-filtered
-  [{:as args
-    :keys [poshed conn lens-ks lens-ks-empty lens-ks-filtered eid-0 eid-1 eid-2 tx-id to-chan]
-    {:keys [tempid transact!] :as dcfg} :dcfg}]
-  (let [_ (init-db! args)
-        necessary-datoms (-> poshed deref (get-in lens-ks))
-        _ (is (= necessary-datoms
-                 #{[eid-0 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-0 :task/name        "Mop Floors"              tx-id]
-                   [eid-1 :task/name        "Draw a picture of a cat" tx-id]
-                   [eid-1 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-2 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-2 :permission/level 54                        tx-id]}))
-        necessary-datoms-empty (-> poshed deref (get-in lens-ks-empty))
-        _ (is (= necessary-datoms-empty nil))
-        necessary-datoms-filtered (-> poshed deref (get-in lens-ks-filtered))
-        _ (is (= necessary-datoms-filtered
-                 #{[eid-0 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-1 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-2 :permission/uuid  "sieojeiofja"             tx-id]
-                   [eid-2 :permission/level 54                        tx-id]}))
-        _ (transact! conn [[:db/add     [:task/name     "Mop Floors"             ] :task/name       "Mop All Floors"]])
-        _ (transact! conn [[:db/retract [:task/name     "Draw a picture of a cat"] :task/name       "Draw a picture of a cat"]
-                           [:db/add     [:task/name     "Mop All Floors"         ] :task/name       "Mop Some Floors"]])
-        _ (transact! conn [[:db/add     [:category/name "At Home"                ] :permission/uuid "sieojeiofja"]])]))
-
 #?(:clj
 (defn take<!! [n c]
   (let [ret (transient [])]
