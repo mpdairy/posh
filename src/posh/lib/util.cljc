@@ -55,3 +55,21 @@
    Puts each x in `xs` as vals in a map.
    The keys in the map are the quoted vals. Then prints the map."
   [& xs] `(debug nil ~(->> xs (map #(vector (list 'quote %) %)) (into {})))))
+
+(defn dissoc-in
+  "Dissociate a value in a nested assocative structure, identified by a sequence
+   of keys. Any collections left empty by the operation will be dissociated from
+   their containing structures.
+   This implementation was adapted from clojure.core.contrib."
+  {:attribution "weavejester.medley"
+   :usage       `{(dissoc-in {:a {:b 1 :c 2} :d 3} [:a :b])
+                  {:a {:c 2} :d 3}}}
+  [m ks]
+  (if-let [[k & ks] (seq ks)]
+    (if (empty? ks)
+        (dissoc m k)
+        (let [new-n (dissoc-in (get m k) ks)]
+          (if (empty? new-n)
+              (dissoc m k)
+              (assoc m k new-n))))
+    m))
