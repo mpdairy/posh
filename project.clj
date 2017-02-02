@@ -1,4 +1,4 @@
-(defproject posh "0.5.5"
+(defproject posh "0.5.6"
   :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
