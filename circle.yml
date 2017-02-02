@@ -1,0 +1,13 @@
+machine:
+  pre:
+    - echo "{:auth {:repository-auth {#\"clojars\" {:username :env/CLOJARS_USERNAME :password :env/CLOJARS_PASSWORD}}}}" > ~/.lein/profiles.clj
+
+test:
+  override:
+    - lein test
+
+deployment:
+  snapshot:
+    branch: master
+    commands:
+      - lein deploy clojars
