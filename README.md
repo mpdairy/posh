@@ -335,12 +335,12 @@ it later, you would be in the middle of the edit still.
 
 (defn editable-label [conn id attr]
   (let [val  (attr @(p/pull conn [attr] id))
-        edit @(p/q conn '[:find ?edit .
+        edit @(p/q '[:find ?edit .
                           :in $ ?id ?attr
                           :where
                           [?edit :edit/id ?id]
                           [?edit :edit/attr ?attr]]
-                   id attr)]
+                   conn id attr)]
     (if-not edit
       [:span val
        [:button
