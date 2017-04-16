@@ -17,9 +17,9 @@
     (vector? id)
     (if-let [eid ((:entid dcfg) db id)]
       ((:pull* dcfg) db query eid)
-      (missing-pull-result dcfg query))
+      (missing-pull-result query))
     (nil? id)
-    (missing-pull-result dcfg query)))
+    (missing-pull-result query)))
 
 ;; need to set last-tx-t in conn so that it doesn't try the same tx twice
 (defn set-conn-listener! [dcfg posh-atom conn db-id]
@@ -124,7 +124,7 @@
   "Returns a reaction of a pull expression. The options argument may specify `:cache :forever`, which keeps query results
   cached indefinitely, even if the reaction is disposed."
   ([dcfg poshdb pull-pattern eid options]
-   (let [true-poshdb (get-db dcfg poshdb)
+   (let [true-poshdb (get-db poshdb)
          storage-key [:pull true-poshdb pull-pattern eid]
          posh-atom   (get-posh-atom dcfg poshdb)]
      (make-query-reaction dcfg
