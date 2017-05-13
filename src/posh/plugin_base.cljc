@@ -2,7 +2,9 @@
   (:require [posh.core :as p]
             [posh.stateful :as ps]
             [posh.lib.db :as db]
-            [posh.lib.update :as u]))
+            [posh.lib.update :as u]
+            [posh.lib.util
+              :refer [debug]]))
 
 (defn missing-pull-result
   [dcfg pull-expr]
@@ -21,29 +23,36 @@
     (nil? id)
     (missing-pull-result dcfg query)))
 
+(defn- assert-listeners [conn]
+  (assert (->> conn meta :listeners (#?(:clj instance? :cljs satisfies?) #?(:clj clojure.lang.IAtom :cljs cljs.core/IAtom)))
+          (str "Connection requires listener metadata atom.")))
+
 ;; need to set last-tx-t in conn so that it doesn't try the same tx twice
 (defn set-conn-listener! [dcfg posh-atom conn db-id]
   (let [posh-vars {:posh-atom posh-atom
-                   :db-id db-id}]
+                   :db-id     db-id}
+        conn      ((or (:->poshable-conn dcfg) identity) conn)]
+    (assert-listeners conn)
     (do
       ((:listen! dcfg) conn :posh-dispenser
         (fn [var]
+          #_(debug "posh-dispenser" var)
           (when (keyword? var)
             (get posh-vars var))))
-      (add-watch conn :posh-schema-listener
-        (fn [_ _ old-state new-state]
-          (when (not= (:schema old-state) (:schema new-state))
-            (swap! posh-atom assoc-in [:schema db-id] (:schema new-state)))))
-            ;; Update posh conn
+      ;; Update posh conn
       ((:listen! dcfg) conn :posh-listener
         (fn [tx-report]
+          #_(debug "posh-listener" tx-report)
           ;;(println "CHANGED: " (keys (:changed (p/after-transact @posh-atom {conn tx-report}))))
           (let [{:keys [ratoms changed]}
                 (swap! posh-atom p/after-transact {conn tx-report})]
             (doseq [[k v] changed]
               (reset! (get ratoms k) (:results v))))))
+      (when-let [f (:additional-listeners dcfg)] (f conn posh-atom db-id))
       conn)))
 
+; TODO allow for `unposh!` or some such thing
+; TODO warn if calling `posh!` multiple times on same conn
 (defn posh! [dcfg & conns]
   (let [posh-atom (atom {})]
     (reset! posh-atom
@@ -60,8 +69,7 @@
                          (p/add-db posh-tree
                                    db-id
                                    (set-conn-listener! dcfg posh-atom (first conns) db-id)
-                                   (:schema @(first conns))))))))))
-
+                                   (when-let [f (:conn->schema dcfg)] (f (first conns)))))))))))
 
 ;; Posh's state atoms are stored inside a listener in the meta data of
 ;; the datascript conn
@@ -185,7 +193,7 @@
                            (= (inc n-query-args) (count args))
                            [(butlast args) (last args)]
                            :else
-                           (throw "Incorrect number of args passed to posh query"))
+                           (throw (#?(:clj Exception. :cljs js/Error.) "Incorrect number of args passed to posh query")))
         true-poshdb-args (map #(if ((:conn? dcfg) %) (get-db dcfg %) %) args)
         posh-atom        (first (remove nil? (map #(get-posh-atom dcfg %) args)))
         storage-key      [:q query true-poshdb-args]]
