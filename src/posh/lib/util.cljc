@@ -39,7 +39,7 @@
 
 (defn debug* [msg args]
   (#?@(:clj  [locking print-lock]
-       :cljs [identity])
+       :cljs [do])
     (println #?(:clj (java.util.Date.) :cljs (js/Date.))
       #?(:clj (str "[" (.getName (Thread/currentThread)) "]") :cljs nil)
       msg)
