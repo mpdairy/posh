@@ -1,6 +1,8 @@
 (ns posh.clj.datascript
+  "The public API of Posh's DataScript implementation for Clojure."
   (:require [posh.plugin-base :as base]
             [posh.lib.ratom :as rx]
+            [posh.lib.datascript :as ldb]
             [datascript.core :as d]))
 
 (def dcfg
@@ -14,7 +16,9 @@
               :listen!       d/listen!
               :conn?         d/conn?
               :ratom         rx/atom
-              :make-reaction rx/make-reaction}]
+              :make-reaction rx/make-reaction
+              :conn->schema  ldb/conn->schema
+              :additional-listeners ldb/add-schema-listener!}]
    (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
 (base/add-plugin dcfg)
