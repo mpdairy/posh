@@ -89,7 +89,7 @@
 
 (defn make-query-reaction
   ([dcfg posh-atom storage-key add-query-fn options]
-   (if-let [r (get-in @posh-atom [:reactions storage-key])]
+   (if-let [r (get-in @posh-atom [:ratoms storage-key])]
      r
      (->
        (swap!
@@ -100,10 +100,10 @@
                  query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
                                           ((:ratom dcfg) query-result))
                  query-reaction       ((:make-reaction dcfg)
-                                        (fn []
+                                       (fn []
                                           ;;(println "RENDERING: " storage-key)
-                                          @query-ratom)
-                                        :on-dispose
+                                         ((:react dcfg) query-ratom))
+                                       :on-dispose
                                         (fn [_ _]
                                           ;;(println "no DISPOSING: " storage-key)
                                           (when-not (= (:cache options) :forever)
@@ -228,32 +228,36 @@
      (ps/poshdb->conn poshdb-or-conn))
    txs))
 
+(defn react [dcfg & args]
+  (apply (:react dcfg) args))
+
 #?(:clj
-(defmacro add-plugin [dcfg]
-  `(do (def ~'missing-pull-result (partial posh.plugin-base/missing-pull-result ~dcfg))
-       (def ~'safe-pull           (partial posh.plugin-base/safe-pull           ~dcfg))
-       (def ~'set-conn-listener!  (partial posh.plugin-base/set-conn-listener!  ~dcfg))
-       (def ~'posh!               (partial posh.plugin-base/posh!               ~dcfg))
-       (def ~'get-conn-var        (partial posh.plugin-base/get-conn-var        ~dcfg))
-       (def ~'get-posh-atom       (partial posh.plugin-base/get-posh-atom       ~dcfg))
-       (def ~'get-db              (partial posh.plugin-base/get-db              ~dcfg))
-       (def ~'rm-posh-item        (partial posh.plugin-base/rm-posh-item        ~dcfg))
-       (def ~'make-query-reaction (partial posh.plugin-base/make-query-reaction ~dcfg))
-       (def ~'pull                (partial posh.plugin-base/pull                ~dcfg))
-       (def ~'pull-info           (partial posh.plugin-base/pull-info           ~dcfg))
-       (def ~'pull-tx             (partial posh.plugin-base/pull-tx             ~dcfg))
-       (def ~'parse-q-query       (partial posh.plugin-base/parse-q-query       ~dcfg))
-       (def ~'q-args-count        (partial posh.plugin-base/q-args-count        ~dcfg))
-       (def ~'q                   (partial posh.plugin-base/q                   ~dcfg))
-       (def ~'q-info              (partial posh.plugin-base/q-info              ~dcfg))
-       (def ~'q-tx                (partial posh.plugin-base/q-tx                ~dcfg))
+   (defmacro add-plugin [dcfg]
+     `(do (def ~'missing-pull-result (partial posh.plugin-base/missing-pull-result ~dcfg))
+          (def ~'safe-pull           (partial posh.plugin-base/safe-pull           ~dcfg))
+          (def ~'set-conn-listener!  (partial posh.plugin-base/set-conn-listener!  ~dcfg))
+          (def ~'posh!               (partial posh.plugin-base/posh!               ~dcfg))
+          (def ~'get-conn-var        (partial posh.plugin-base/get-conn-var        ~dcfg))
+          (def ~'get-posh-atom       (partial posh.plugin-base/get-posh-atom       ~dcfg))
+          (def ~'get-db              (partial posh.plugin-base/get-db              ~dcfg))
+          (def ~'rm-posh-item        (partial posh.plugin-base/rm-posh-item        ~dcfg))
+          (def ~'make-query-reaction (partial posh.plugin-base/make-query-reaction ~dcfg))
+          (def ~'pull                (partial posh.plugin-base/pull                ~dcfg))
+          (def ~'pull-info           (partial posh.plugin-base/pull-info           ~dcfg))
+          (def ~'pull-tx             (partial posh.plugin-base/pull-tx             ~dcfg))
+          (def ~'parse-q-query       (partial posh.plugin-base/parse-q-query       ~dcfg))
+          (def ~'q-args-count        (partial posh.plugin-base/q-args-count        ~dcfg))
+          (def ~'q                   (partial posh.plugin-base/q                   ~dcfg))
+          (def ~'q-info              (partial posh.plugin-base/q-info              ~dcfg))
+          (def ~'q-tx                (partial posh.plugin-base/q-tx                ~dcfg))
+          (def ~'react               (partial posh.plugin-base/react               ~dcfg))
 
        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-       (def ~'filter-tx           (partial posh.plugin-base/filter-tx           ~dcfg))
-       (def ~'filter-pull         (partial posh.plugin-base/filter-pull         ~dcfg))
-       (def ~'filter-q            (partial posh.plugin-base/filter-q            ~dcfg))
+          (def ~'filter-tx           (partial posh.plugin-base/filter-tx           ~dcfg))
+          (def ~'filter-pull         (partial posh.plugin-base/filter-pull         ~dcfg))
+          (def ~'filter-q            (partial posh.plugin-base/filter-q            ~dcfg))
 
        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-       (def ~'transact!           (partial posh.plugin-base/transact!           ~dcfg)))))
+          (def ~'transact!           (partial posh.plugin-base/transact!           ~dcfg)))))

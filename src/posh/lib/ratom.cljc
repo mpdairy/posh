@@ -17,146 +17,147 @@
   (boolean (:ns env)))
 
 #?(:clj
-(defmacro if-cljs
-  "Return @then if the macro is generating CLJS code and @else for CLJ code."
-  {:from "https://groups.google.com/d/msg/clojurescript/iBY5HaQda4A/w1lAQi9_AwsJ"}
-  ([env then else] `(if (cljs-env? ~env) ~then ~else))))
+   (defmacro if-cljs
+     "Return @then if the macro is generating CLJS code and @else for CLJ code."
+     {:from "https://groups.google.com/d/msg/clojurescript/iBY5HaQda4A/w1lAQi9_AwsJ"}
+     ([env then else] `(if (cljs-env? ~env) ~then ~else))))
 
 ;;; Mutability
 
 #?(:clj
-(definterface IMutable
-  (get [])
-  (set [x])))
+   (definterface IMutable
+     (get [])
+     (set [x])))
 
 ; TODO CLJ create for necessary primitive datatypes as well
 #?(:clj
-(deftype Mutable [^:unsynchronized-mutable val]
-  IMutable
-  (get [this] val)
-  (set [this x] (set! val x))
-  IDeref
-  (deref [this] val)))
+   (deftype Mutable [^:unsynchronized-mutable val]
+     IMutable
+     (get [this] val)
+     (set [this x] (set! val x))
+     IDeref
+     (deref [this] val)))
 
 #?(:clj (defmacro mut [x] `(Mutable. ~x)))
 
 #?(:clj
-(defmacro getm
-  "Get mutable"
-  [x]
-  (if-cljs &env x
-                `(.get ~(with-meta x {:tag 'posh.lib.ratom.Mutable})))))
+   (defmacro getm
+     "Get mutable"
+     [x]
+     (if-cljs &env x
+                   `(.get ~(with-meta x {:tag 'posh.lib.ratom.Mutable})))))
 
 #?(:clj
-(defmacro setm!
-  "Set mutable"
-  [x v]
-  (if-cljs &env `(set!            ~x                                        ~v)
-                `(.set ~(with-meta x {:tag 'posh.lib.ratom.Mutable}) ~v))))
+   (defmacro setm!
+     "Set mutable"
+     [x v]
+     (if-cljs &env `(set!            ~x                                        ~v)
+                   `(.set ~(with-meta x {:tag 'posh.lib.ratom.Mutable}) ~v))))
 
 #?(:clj
-(defmacro getf
-  "Get field"
-  [x field]
-  (let [accessor (symbol
-                   (str "."
-                     (if-cljs &env (str "-" (name field))
-                                   (str "get" (upper-first (name field))))))]
-    `(~accessor ~x))))
+   (defmacro getf
+     "Get field"
+     [x field]
+     (let [accessor (symbol
+                      (str "."
+                        (if-cljs &env (str "-" (name field))
+                                      (str "get" (upper-first (name field))))))]
+       `(~accessor ~x))))
 
 #?(:clj
-(defmacro setf!
-  "Set field"
-  [x field v]
-  (let [accessor (symbol
-                   (str "."
-                     (if-cljs &env (str "-" (name field))
-                                   (str "set" (upper-first (name field))))))]
-    (if-cljs &env `(set! (~accessor ~x) ~v)
-                  `(~accessor ~x ~v)))))
+   (defmacro setf!
+     "Set field"
+     [x field v]
+     (let [accessor (symbol
+                      (str "."
+                        (if-cljs &env (str "-" (name field))
+                                      (str "set" (upper-first (name field))))))]
+       (if-cljs &env `(set! (~accessor ~x) ~v)
+                     `(~accessor ~x ~v)))))
 
 #?(:clj
-(defmacro add! [x v]
-  (if-cljs &env `(.push ~x ~v)
-                `(.add ~(with-meta x {:tag 'java.util.ArrayList}) ~v))))
+   (defmacro add! [x v]
+     (if-cljs &env `(.push ~x ~v)
+                   `(.add ~(with-meta x {:tag 'java.util.ArrayList}) ~v))))
 
 #?(:clj
-(defmacro array-list [& args]
-  (if-cljs &env `(array ~@args)
-                `(doto (ArrayList.) ~@(for [arg args] `(.add ~arg))))))
+   (defmacro array-list [& args]
+     (if-cljs &env `(into [] ~@args)
+                   `(doto (ArrayList.) ~@(for [arg args] `(.add ~arg))))))
 
 #?(:clj
-(defmacro alength* [x]
-  (if-cljs &env `(alength ~x)
-                `(.size ~(with-meta x {:tag 'java.util.ArrayList})))))
+   (defmacro alength* [x]
+     (if-cljs &env `(alength ~x)
+                   `(.size ~(with-meta x {:tag 'java.util.ArrayList})))))
 
 #?(:clj
-(defmacro aget* [x i]
-  (if-cljs &env `(aget ~x)
-                `(.get ~(with-meta x {:tag 'java.util.ArrayList}) ~i))))
+   (defmacro aget* [x i]
+     (if-cljs &env `(aget ~x ~i)
+                   `(.get ~(with-meta x {:tag 'java.util.ArrayList}) ~i))))
 
 #?(:clj
-(defmacro aset* [x i v]
-  (if-cljs &env `(aset ~x ~i ~v)
-                `(.set ~(with-meta x {:tag 'java.util.ArrayList}) ~i ~v))))
+   (defmacro aset* [x i v]
+     (if-cljs &env `(aset ~x ~i ~v)
+                   `(.set ~(with-meta x {:tag 'java.util.ArrayList}) ~i ~v))))
 
 ;;; Interfaces and (certain) types
 
 #?(:clj
-(definterface IHasCaptured
-  (getCaptured [])
-  (setCaptured [v])))
+   (definterface IHasCaptured
+     (getCaptured [])
+     (setCaptured [v])))
 
 #?(:clj
-(deftype HasCaptured
-  [^:unsynchronized-mutable captured]
-  IHasCaptured
-  (getCaptured [this] captured)
-  (setCaptured [this v] (set! captured v))))
+   (deftype HasCaptured
+     [^:unsynchronized-mutable captured]
+     IHasCaptured
+     (getCaptured [this] captured)
+     (setCaptured [this v] (set! captured v))))
 
 #?(:clj
-(definterface IHasWatches
-  (getWatches    [])
-  (setWatches    [v])
-  (getWatchesArr [])
-  (setWatchesArr [v])))
+   (definterface IHasWatches
+     (getWatches    [])
+     (setWatches    [v])
+     (getWatchesArr [])
+     (setWatchesArr [v])))
 
 #?(:clj
-(definterface IReaction
-  (peekAt [])
-  (handleChange [sender oldval newval])
-  (updateWatching [derefed])
-  (queuedRun [])
-  (tryCapture [f])
-  (run [check])
-  (setOpts [opts])
-  (getRatomGeneration [])
-  (setRatomGeneration [v])
-  (getIsDirty         [])
-  (setIsDirty         [v])
-  (getWatching        [])
-  (setWatching        [v])
-  (getAutoRun         [])
-  (setAutoRun         [v])))
+   (definterface IReaction
+     (peekAt [])
+     (handleChange [sender oldval newval])
+     (updateWatching [derefed])
+     (queuedRun [])
+     (tryCapture [f])
+     (run [check])
+     (setOpts [opts])
+     (getRatomGeneration [])
+     (setRatomGeneration [v])
+     (getIsDirty         [])
+     (setIsDirty         [v])
+     (getWatching        [])
+     (setWatching        [v])
+     (getAutoRun         [])
+     (setAutoRun         [v])))
 
 #?(:clj
-(definterface IHasReaction
-  (getReaction [])
-  (setReaction [v])))
+   (definterface IHasReaction
+     (getReaction [])
+     (setReaction [v])))
 
 #?(:clj
-(definterface IHasDestroy
-  (getDestroy [])
-  (setDestroy [v])))
+   (definterface IHasDestroy
+     (getDestroy [])
+     (setDestroy [v])))
 
 #?(:clj
-(definterface IHasF
-  (getF [])
-  (setF [v])))
+   (definterface IHasF
+     (getF [])
+     (setF [v])))
 
 ;;; Logging
 
-#?(:clj (defn dev? [] false)) ; TODO CLJ
+;#?(:clj (defn dev? [] false)) ; TODO CLJ
+(defn dev? [] false)
 
 ;;; Vars
 
@@ -175,18 +176,18 @@
 (defn running [] (+ @-running))
 
 #?(:cljs
-(defn- ^number arr-len [x]
-  (if (nil? x) 0 (alength* x))))
+   (defn- ^number arr-len [x]
+     (if (nil? x) 0 (alength* x))))
 
 #?(:cljs
-(defn- ^boolean arr-eq [x y]
-  (let [len (arr-len x)]
-    (and (== len (arr-len y))
-         (loop [i 0]
-           (or (== i len)
-               (if (identical? (aget* x i) (aget* y i))
-                 (recur (inc i))
-                 false)))))))
+   (defn- ^boolean arr-eq [x y]
+     (let [len (arr-len x)]
+       (and (== len (arr-len y))
+            (loop [i 0]
+              (or (== i len)
+                  (if (identical? (aget* x i) (aget* y i))
+                    (recur (inc i))
+                    false)))))))
 
 (defn- in-context [obj f]
   (binding [*ratom-context* obj]
@@ -234,10 +235,10 @@
           (recur (+ 2 i)))))))
 
 #?(:cljs
-(defn- pr-atom [a writer opts s]
-  (-write writer (str "#<" s " "))
-  (pr-writer (binding [*ratom-context* nil] (-deref a)) writer opts)
-  (-write writer ">")))
+   (defn- pr-atom [a writer opts s]
+     (-write writer (str "#<" s " "))
+     (pr-writer (binding [*ratom-context* nil] (-deref a)) writer opts)
+     (-write writer ">")))
 
 ; ;;; Queueing
 
@@ -319,11 +320,11 @@
   #?(:cljs (-hash [this] (goog/getUid this)))
 
   #?@(:clj
- [IHasWatches
-  (getWatches    [this]   watches)
-  (setWatches    [this v] (set! watches v))
-  (getWatchesArr [this]   watchesArr)
-  (setWatchesArr [this v] (set! watchesArr v))]))
+      [IHasWatches
+       (getWatches    [this]   watches)
+       (setWatches    [this v] (set! watches v))
+       (getWatchesArr [this]   watchesArr)
+       (setWatchesArr [this v] (set! watchesArr v))]))
 
 (defn atom
   "Like clojure.core/atom, except that it keeps track of derefs."
@@ -344,15 +345,15 @@
       (some? r) (#?(:clj .deref :cljs -deref) r)
       (nil? *ratom-context*) (f)
       :else (let [^IDeref r (make-reaction
-                     f :on-dispose (fn [x]
-                                     (when (getm debug) (swap! -running dec))
-                                     (as-> (aget* o cache-key) _
-                                       (dissoc _ k)
-                                       (aset* o cache-key _))
-                                     (when (some? obj)
-                                       (setf! obj reaction nil))
-                                     (when (some? destroy)
-                                       (destroy x))))
+                             f :on-dispose (fn [x]
+                                             (when (getm debug) (swap! -running dec))
+                                             (as-> (aget* o cache-key) _
+                                               (dissoc _ k)
+                                               (aset* o cache-key _))
+                                             (when (some? obj)
+                                               (setf! obj reaction nil))
+                                             (when (some? destroy)
+                                               (destroy x))))
                   v (#?(:clj .deref :cljs -deref) r)]
               (aset* o cache-key (assoc m k r))
               (when (getm debug) (swap! -running inc))
@@ -361,8 +362,8 @@
               v))))
 
 #?(:clj
-(definterface ITrack
-  (getArgs [])))
+   (definterface ITrack
+     (getArgs [])))
 
 (deftype Track
   #?(:clj  [^:unsynchronized-mutable f args
@@ -389,12 +390,12 @@
   #?(:cljs (-pr-writer [a w opts] (pr-atom a w opts "Track:")))
 
   #?@(:clj
- [IHasF
-  (getF    [this]   f)
-  (setF    [this v] (set! f v))
+      [IHasF
+       (getF    [this]   f)
+       (setF    [this v] (set! f v))
 
-  ITrack
-  (getArgs [this]   args)]))
+       ITrack
+       (getArgs [this]   args)]))
 
 (defn make-track [f args]
   (Track. f args nil))
@@ -417,11 +418,11 @@
 ;;; cursor
 
 #?(:clj
-(definterface IRCursor
-  (peekAt   [])
-  (setState [oldstate newstate])
-  (getPath  [])
-  (getRatom [])))
+   (definterface IRCursor
+     (peekAt   [])
+     (setState [oldstate newstate])
+     (getPath  [])
+     (getRatom [])))
 
 (deftype RCursor
   #?(:clj  [ratom path
@@ -453,8 +454,8 @@
         (notify-w this oldstate newstate))))
 
   #?@(:clj
-  [(getPath  [this] path)
-   (getRatom [this] ratom)])
+      [(getPath  [this] path)
+       (getRatom [this] ratom)])
 
   IDeref
   (#?(:clj deref :cljs -deref) [this]
@@ -546,9 +547,8 @@
             ^:unsynchronized-mutable ratomGeneration
             ^:unsynchronized-mutable watchesArr]
      :cljs [f ^:mutable state
-            ^:mutable
-            ^boolean dirty?
-            ^boolean no-cache?
+            ^:mutable ^boolean dirty?
+            ^:mutable ^boolean no-cache?
             ^:mutable watching
             ^:mutable watches
             ^:mutable autoRun
@@ -655,28 +655,28 @@
         (set! no-cache? no-cache*))))
 
   #?@(:clj
- [(getRatomGeneration [this]   ratomGeneration)
-  (setRatomGeneration [this v] (set! ratomGeneration v))
-  (getIsDirty         [this]   dirty?)
-  (setIsDirty         [this v] (set! dirty? v))
-  (getWatching        [this]   watching)
-  (setWatching        [this v] (set! watching v))
-  (getAutoRun         [this]   autoRun)
-  (setAutoRun         [this v] (set! autoRun v))
+      [(getRatomGeneration [this]   ratomGeneration)
+       (setRatomGeneration [this v] (set! ratomGeneration v))
+       (getIsDirty         [this]   dirty?)
+       (setIsDirty         [this v] (set! dirty? v))
+       (getWatching        [this]   watching)
+       (setWatching        [this v] (set! watching v))
+       (getAutoRun         [this]   autoRun)
+       (setAutoRun         [this v] (set! autoRun v))
 
-  IHasF
-  (getF               [this]   f)
-  (setF               [this v] (set! f v))
+       IHasF
+       (getF               [this]   f)
+       (setF               [this v] (set! f v))
 
-  IHasCaptured
-  (getCaptured        [this]   captured)
-  (setCaptured        [this v] (set! captured v))
+       IHasCaptured
+       (getCaptured        [this]   captured)
+       (setCaptured        [this v] (set! captured v))
 
-  IHasWatches
-  (getWatches    [this]   watches)
-  (setWatches    [this v] (set! watches v))
-  (getWatchesArr [this]   watchesArr)
-  (setWatchesArr [this v] (set! watchesArr v))])
+       IHasWatches
+       (getWatches    [this]   watches)
+       (setWatches    [this v] (set! watches v))
+       (getWatchesArr [this]   watchesArr)
+       (setWatchesArr [this v] (set! watchesArr v))])
 
   IRunnable
   (run [this]
@@ -776,12 +776,12 @@
 ;;; wrap
 
 #?(:clj
-(definterface IWrapper
-  (getState    [])
-  (setState    [v])
-  (getCallback [])
-  (getChanged  [])
-  (setChanged  [v])))
+   (definterface IWrapper
+     (getState    [])
+     (setState    [v])
+     (getCallback [])
+     (getChanged  [])
+     (setChanged  [v])))
 
 (deftype Wrapper
   #?(:clj  [^:unsynchronized-mutable state callback
@@ -796,8 +796,8 @@
   (#?(:clj deref :cljs -deref) [this]
     (when (dev?)
       (when (and changed (some? *ratom-context*))
-        (#?(:clj println :cljs warn) "derefing stale wrap: "
-              (pr-str this))))
+        (println "derefing stale wrap: "
+          (pr-str this))))
     state)
 
   #?(:clj IAtom :cljs IReset)
@@ -835,88 +835,88 @@
   #?(:cljs (-pr-writer [a w opts] (pr-atom a w opts "Wrap:")))
 
   #?@(:clj
- [IWrapper
-  (getState    [this]   state)
-  (setState    [this v] (set! state v))
-  (getCallback [this]   callback)
-  (getChanged  [this]   changed)
-  (setChanged  [this v] (set! changed v))]))
+      [IWrapper
+       (getState    [this]   state)
+       (setState    [this v] (set! state v))
+       (getCallback [this]   callback)
+       (getChanged  [this]   changed)
+       (setChanged  [this v] (set! changed v))]))
 
 #_(:cljs
-(defn make-wrapper [value callback-fn args]
-  (Wrapper. value
-            (reagent.impl.util/partial-ifn. callback-fn args nil)
-            false nil)))
+   (defn make-wrapper [value callback-fn args]
+     (Wrapper. value
+               (reagent.impl.util/partial-ifn. callback-fn args nil)
+               false nil)))
 
 #?(:cljs ; TODO CLJ
-(defn rswap!
-  "Swaps the value of a to be (apply f current-value-of-atom args).
+   (defn rswap!
+     "Swaps the value of a to be (apply f current-value-of-atom args).
   rswap! works like swap!, except that recursive calls to rswap! on
   the same atom are allowed – and it always returns nil."
-  [a f & args]
-  {:pre [(satisfies? IAtom a)
-         (ifn? f)]}
-  (if a.rswapping
-    (-> (or a.rswapfs (set! a.rswapfs (array)))
-        (.push #(apply f % args)))
-    (do (set! a.rswapping true)
-        (try (swap! a (fn [state]
-                        (loop [s (apply f state args)]
-                          (if-some [sf (some-> a.rswapfs .shift)]
-                            (recur (sf s))
-                            s))))
-             (finally
-               (set! a.rswapping false)))))
-  nil))
+     [a f & args]
+     {:pre [(satisfies? IAtom a)
+            (ifn? f)]}
+     (if a.rswapping
+       (-> (or a.rswapfs (set! a.rswapfs (array)))
+           (.push #(apply f % args)))
+       (do (set! a.rswapping true)
+           (try (swap! a (fn [state]
+                           (loop [s (apply f state args)]
+                             (if-some [sf (some-> a.rswapfs .shift)]
+                               (recur (sf s))
+                               s))))
+                (finally
+                  (set! a.rswapping false)))))
+     nil))
 
 #?(:clj
-(defmacro reaction [& body]
-  `(make-reaction (fn [] ~@body))))
+   (defmacro reaction [& body]
+     `(make-reaction (fn [] ~@body))))
 
 #?(:clj
-(defmacro run!
-  "Runs body immediately, and runs again whenever atoms deferenced in the body change. Body should side effect."
-  [& body]
-  `(let [co# (make-reaction (fn [] ~@body) :auto-run true)]
-     (deref co#)
-     co#)))
+   (defmacro run!
+     "Runs body immediately, and runs again whenever atoms deferenced in the body change. Body should side effect."
+     [& body]
+     `(let [co# (make-reaction (fn [] ~@body) :auto-run true)]
+        (deref co#)
+        co#)))
 
 #?(:clj
-(defmacro with-let [bindings & body]
-  (assert (vector? bindings))
-  (let [v (gensym "with-let")
-        k (keyword v)
-        init (gensym "init")
-        bs (into [init `(zero? (alength* ~v))]
-                 (map-indexed (fn [^long i x]
-                                (if (even? i)
-                                  x
-                                  (let [j (quot i 2)]
-                                    `(if ~init
-                                       (aset* ~v ~j ~x)
-                                       (aget* ~v ~j)))))
-                              bindings))
-        [forms destroy-] (let [fin (last body)]
-                           (if (and (list? fin)
-                                    (= 'finally (first fin)))
-                             [(butlast body) `(fn [] ~@(rest fin))]
-                             [body nil]))
-        add-destroy (when destroy-
-                      `(let [destroy# ~destroy-]
-                         (if (reactive?)
-                           (when (nil? (getf ~v destroy))
-                             (setf! ~v destroy destroy#))
-                           (destroy#))))
-        asserting (if *assert* true false)]
-    `(let [~v (with-let-values ~k)]
-       (when ~asserting
-         (when-some [c# *ratom-context*]
-           (when (== (getf ~v generation) (getf c# ratomGeneration))
-             (~(if-cljs &env 'd/error 'println)
-               "Warning: The same with-let is being used more "
-               "than once in the same reactive context."))
-           (setf! ~v generation (getf c# ratomGeneration))))
-       (let ~bs
-         (let [res# (do ~@forms)]
-           ~add-destroy
-           res#))))))
+   (defmacro with-let [bindings & body]
+     (assert (vector? bindings))
+     (let [v (gensym "with-let")
+           k (keyword v)
+           init (gensym "init")
+           bs (into [init `(zero? (alength* ~v))]
+                    (map-indexed (fn [^long i x]
+                                   (if (even? i)
+                                     x
+                                     (let [j (quot i 2)]
+                                       `(if ~init
+                                          (aset* ~v ~j ~x)
+                                          (aget* ~v ~j)))))
+                                 bindings))
+           [forms destroy-] (let [fin (last body)]
+                              (if (and (list? fin)
+                                       (= 'finally (first fin)))
+                                [(butlast body) `(fn [] ~@(rest fin))]
+                                [body nil]))
+           add-destroy (when destroy-
+                         `(let [destroy# ~destroy-]
+                            (if (reactive?)
+                              (when (nil? (getf ~v destroy))
+                                (setf! ~v destroy destroy#))
+                              (destroy#))))
+           asserting (if *assert* true false)]
+       `(let [~v (with-let-values ~k)]
+          (when ~asserting
+            (when-some [c# *ratom-context*]
+              (when (== (getf ~v generation) (getf c# ratomGeneration))
+                (~(if-cljs &env 'd/error 'println)
+                  "Warning: The same with-let is being used more "
+                  "than once in the same reactive context."))
+              (setf! ~v generation (getf c# ratomGeneration))))
+          (let ~bs
+            (let [res# (do ~@forms)]
+              ~add-destroy
+              res#))))))

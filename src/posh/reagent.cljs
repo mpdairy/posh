@@ -17,6 +17,7 @@
               :listen!       d/listen!
               :conn?         d/conn?
               :ratom         r/atom
+              :react         deref
               :make-reaction ra/make-reaction}]
    (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
