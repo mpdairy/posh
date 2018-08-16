@@ -89,7 +89,7 @@
 
 (defn make-query-reaction
   ([dcfg posh-atom storage-key add-query-fn options]
-   (if-let [r (get-in @posh-atom [:ratoms storage-key])]
+   (if-let [r (get-in @posh-atom [:reactions storage-key])]
      r
      (->
        (swap!
