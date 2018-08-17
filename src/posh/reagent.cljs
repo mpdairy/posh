@@ -8,7 +8,7 @@
 
 (defn derive-reaction [reactions key f]
   ;; TODO: use key for efficiency
-  (prn "deriving reaction...")
+  ; (prn "deriving reaction...")
   (ra/make-reaction
     #(apply f (mapv deref reactions))))
 

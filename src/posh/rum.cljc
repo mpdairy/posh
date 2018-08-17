@@ -5,7 +5,7 @@
     [datascript.core :as d]))
 
 (defn make-reaction [f & {:as local-mixin :keys [on-dispose]}]
-  (prn "make-reaction" (str f))
+  ; (prn "make-reaction" (str f))
   ;; TODO: handle at least the on-dispose method of the local mixin
   (rum/derived-atom [] ::no-refs-anyways f))
 
