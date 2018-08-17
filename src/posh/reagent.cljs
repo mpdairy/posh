@@ -6,6 +6,12 @@
             [reagent.core :as r]
             [reagent.ratom :as ra]))
 
+(defn derive-reaction [reactions key f]
+  ;; TODO: use key for efficiency
+  (prn "deriving reaction...")
+  (ra/make-reaction
+    #(apply f (mapv deref reactions))))
+
 (def dcfg
   (let [dcfg {:db            d/db
               :pull*         d/pull
@@ -18,6 +24,7 @@
               :conn?         d/conn?
               :ratom         r/atom
               :react         deref
+              :derive-reaction derive-reaction
               :make-reaction ra/make-reaction}]
    (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
