@@ -1,4 +1,4 @@
-(defproject posh "0.5.6"
+(defproject posh "0.5.7"
   :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
@@ -16,7 +16,7 @@
                          :compiler {:main "posh.core"
                                     :asset-path "js"
                                     :output-to "resources/public/js/main.js"
-                                    :output-dir "resources/public/js"} } ]
-              }
+                                    :output-dir "resources/public/js"}}]}
+
   :scm {:name "git"
         :url "https://github.com/mpdairy/posh"})
