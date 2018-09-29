@@ -1,7 +1,7 @@
 (ns posh.reagent
   (:require-macros [reagent.ratom :refer [reaction]])
   (:require [posh.plugin-base :as base
-              :include-macros]
+              :include-macros true]
             [datascript.core :as d]
             [reagent.core :as r]
             [reagent.ratom :as ra]))
