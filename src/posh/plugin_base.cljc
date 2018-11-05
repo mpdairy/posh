@@ -12,7 +12,7 @@
 (defn safe-pull
   [dcfg db query id]
   (cond
-    (integer? id)
+    (number? id)
     ((:pull* dcfg) db query id)
     (vector? id)
     (if-let [eid ((:entid dcfg) db id)]
