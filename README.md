@@ -99,7 +99,7 @@ even after the component using that query is un-rendered. (Thanks, [metasoarous]
   they sort-of worked in the older version. If you need to use those,
   just keep using the older version until those expressions are
   supported.
-  
+
 ## Overview
 
 Posh gives you two functions to retrieve data from the database from
@@ -307,7 +307,7 @@ one day explain further.
 ### Editable Label
 
 This component will show the text value
-for any entity and attrib combo. There is an "edit" button that, when clicked, 
+for any entity and attrib combo. There is an "edit" button that, when clicked,
 creates an `:edit` entity that keeps track of the
 temporary text typed in the edit box. The "done" button resets the original
 value of the entity and attrib and deletes the `:edit` entity. The
@@ -368,6 +368,20 @@ eventually will do this, though currently it just copies the entire
 Datomic db over to DataScript.
 
 See our Gitter room for updates: https://gitter.im/mpdairy/posh
+
+## Developing this library
+
+Start a Clojure REPL via your normal way -- `M-x cider-jack-in` for Emacs users.
+
+Start a CLJS REPL via `lein trampoline cljsbuild repl-listen`
+
+Run tests with `lein test`
+
+Files of interest:
+
+* posh.clj.datomic.clj - Clojure Datomic API
+* posh.clj.datascript.clj - Clojure Datascript API
+* posh.reagent - CLJS Datascript API
 
 ## License
 
