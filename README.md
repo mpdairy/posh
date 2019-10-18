@@ -375,13 +375,15 @@ Start a Clojure REPL via your normal way -- `M-x cider-jack-in` for Emacs users.
 
 Start a CLJS REPL via `lein trampoline cljsbuild repl-listen`
 
-Run tests with `lein test`
-
 Files of interest:
 
 * posh.clj.datomic.clj - Clojure Datomic API
 * posh.clj.datascript.clj - Clojure Datascript API
 * posh.reagent - CLJS Datascript API
+
+### Running tests
+
+Run `lein test` from project root
 
 ## License
 
