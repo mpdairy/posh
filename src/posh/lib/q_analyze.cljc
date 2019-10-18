@@ -49,7 +49,8 @@
 
 (defn eav? [v]
   (and (vector? v)
-       (not (some coll? v))))
+       (not (or (coll? (first v))
+                (coll? (second v))))))
 
 (defn wildcard? [s] (= s '_))
 
@@ -374,15 +375,58 @@
          (apply merge))))
 
 (defn split-datoms [datoms]
-            (->> (group-by first datoms)
-                 (map (fn [[db-sym db-datoms]]
-                        {db-sym
-                         (map (comp vec rest) db-datoms)}))
-                 (apply merge)))
+  (->> (group-by first datoms)
+       (map (fn [[db-sym db-datoms]]
+              {db-sym
+               (map (comp vec rest) db-datoms)}))
+       (apply merge)))
 
-(defn resolve-any-idents [entid-fn db input-set]
-  (set (for [x input-set]
-         (if (coll? x) (entid-fn db x) x))))
+(defn- schema-ref?
+  "Returns whether attribute identified by k is of :db/valueType :db.type/ref"
+  [schema k]
+  (= :db.type/ref (:db/valueType (get schema k))))
+
+(defn- indexes-of [e coll] (keep-indexed #(if (= e %2) %1) coll))
+
+(defn- lookup-ref?
+  "Returns whether var-name is used as lookup-ref inside of query's :where clauses.
+  var-name - the symbolic variable name
+  where - coll of where clauses
+  schema - map of schemas with attribute names as keys
+  Returns boolean true or false"
+  [schema where var-name var-value]
+  (if-not (coll? var-value)
+    false
+    (loop [clause (first where)
+           remaining (rest where)]
+      (condp = (first (indexes-of var-name clause))
+        1 true
+
+        ;; If datascript supported :db/valueTuple :db.type/tuple, could check that here
+        ;; instead of needing to scan every :where clause to ensure it's not a schema-ref
+        3 (if (schema-ref? schema (nth clause 2))
+            true
+            (if (seq remaining)
+              (recur (first remaining) (rest remaining))
+              false))
+
+        (if (seq remaining)
+          (recur (first remaining) (rest remaining))
+          false)))))
+
+(defn resolve-any-idents
+  "Given input-set from query, resolves any lookup-refs
+  Inputs:
+  entid-fn - Datomic/DS function to take lookup-ref & returns entid
+  db - value of DB
+  schemas - map with keys matching known schema attributes
+  where - where clauses of query
+  input-set - value from query :in"
+  [entid-fn db schema where var-name input-set]
+  (set (for [var-value input-set]
+         (if (lookup-ref? schema where var-name var-value)
+           (entid-fn db var-value)
+           var-value))))
 
 ;;;;;;;; q function that gives pattern, datoms, and results all in one
 ;;;;;;;; query. db should be first of args (for now. later, finding
@@ -457,7 +501,7 @@
         vars         (vec (get-all-vars eavs))
         newqm        (merge qm {:find vars :where where})
         ;; This doesn't seem to be getting used anymore
-        ;newq         (qm-to-query newqm)
+        ;;newq         (qm-to-query newqm)
         dbvarmap     (make-dbarg-map (:in qm) args)
         fixed-args   (->> (zipmap (:in qm) args)
                           (map (fn [[sym arg]]
@@ -465,9 +509,9 @@
         r            (apply (partial (:q dcfg) newqm) fixed-args)
         lookup-ref-patterns
         (->> args
-            ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
-            (filter (every-pred vector? (comp keyword? first) (comp (partial = 2) count)))
-            (map (fn [[a v]] ['$ '_ a v])))]
+             ;; Would be nice to check by the schema as well, to make sure this is actually a identity attribute
+             (filter (every-pred vector? (comp keyword? first) (comp (partial = 2) count)))
+             (map (fn [[a v]] ['$ '_ a v])))]
     (merge
      (when (some #{:datoms :datoms-t} retrieve)
        (let [datoms (split-datoms (create-q-datoms r eavs vars))]
@@ -491,7 +535,7 @@
        {:results
         ((:q dcfg) {:find (vec (:find qm))
                     :in [[vars '...]]}
-                   (vec r))})
+         (vec r))})
      (when (some #{:patterns :filter-patterns :simple-patterns} retrieve)
        (let
            [in-vars      (get-input-sets (:q dcfg) (:in qm) args)
@@ -499,11 +543,16 @@
                                (vec
                                 (cons db
                                       (map
-                                       #(if-let [v (in-vars %)]
-                                          (resolve-any-idents (:entid dcfg)
-                                                              (:db (get dbvarmap db))
-                                                              v)
-                                          %) eav))))
+                                       (fn [var-name]
+                                         (if-let [var-value (in-vars var-name)]
+                                           (resolve-any-idents (:entid dcfg)
+                                                               (:db (get dbvarmap db))
+                                                               (:schema (get dbvarmap db))
+                                                               where
+                                                               var-name
+                                                               var-value)
+                                           var-name))
+                                       eav))))
                              (concat lookup-ref-patterns eavs))
             qvar-count   (count-qvars eavs-ins)
             linked-qvars (set (remove nil? (map (fn [[k v]] (if (> v 1) k)) qvar-count)))

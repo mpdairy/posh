@@ -17,8 +17,4 @@
               :make-reaction rx/make-reaction}]
     (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
-(def instrument-q
-  "Exists only so CIDER can instrument plugin-base/q for debugging"
-  (partial #'base/q dcfg))
-
 (base/add-plugin dcfg)

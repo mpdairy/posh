@@ -1,14 +1,7 @@
 (ns posh.lib.datascript-test
-  "Created to assist development of 'tuple value' feature
-  see https://github.com/mpdairy/posh/issues/37"
   (:require [clojure.test :refer [is deftest testing]]
             [datascript.core :as dt]
             [posh.clj.datascript :as d]))
-
-(deftest test-datascript-conn
-  (testing "Basic Datascipt dependency exists"
-    (let [conn (dt/create-conn)]
-      (is (some? conn) "Datascript connection can be created"))))
 
 (deftest test-simple-query
   (let [conn (dt/create-conn {:a {:db/unique :db.unique/identity}})
@@ -20,24 +13,39 @@
                  ffirst)]
     (is (some? eid) "Entity should be returned from basic matching query")))
 
-;; NOTE: Hardcoding in a lookup-ref in :where isn't supposed to work -- only testing :in here
+;; NOTE: Hardcoding in a lookup-ref in :where isn't supposed to work -- so only testing :in here
 ;;       https://docs.datomic.com/on-prem/identity.html#lookup-refs
-(deftest test-lookup-ref-in
-  (testing "Lookups refs work within query :in"
+(deftest test-lookup-ref-in-eid
+  (testing "Lookups refs work within query :in as entity-id"
     (let [conn (dt/create-conn {:a {:db/unique :db.unique/identity}})
           _ (d/posh! conn)
           tran-a (d/transact! conn [{:a "foo"
-                                     :b "bar"
-                                     :c "baz"}])
-          b (->> (d/q '[:find ?b ?c
+                                     :b "bar"}])
+          b (->> (d/q '[:find ?b
                         :in $ ?lookup
                         :where
-                        [?lookup :b ?b]
-                        [?lookup :c ?c]]
+                        [?lookup :b ?b]]
                       conn [:a "foo"])
                  deref
                  first)]
-      (is (= b ["bar" "baz"])))))
+      (is (= b ["bar"])))))
+
+(deftest test-lookup-ref-in-value
+  (testing "Lookups refs work within query value as reference value"
+    (let [conn (dt/create-conn {:a {:db/unique :db.unique/identity}
+                                :b {:db/valueType :db.type/ref}})
+          _ (d/posh! conn)
+          tran-a (d/transact! conn [{:a "foo"
+                                     :b {:a "foo2"}}])
+          b (->> (d/q '[:find ?aval
+                        :in $ ?lookup
+                        :where
+                        [?e :b ?lookup]
+                        [?e :a ?aval]]
+                      conn [:a "foo2"])
+                 deref
+                 first)]
+      (is (= b ["foo"])))))
 
 (deftest test-lookup-ref-transact
   (testing "Lookups refs work via db/transact"
@@ -92,15 +100,3 @@
                    dt/touch)]
       (= ["foo" "bar"] (:a ent))
       (= 42 (:b ent)))))
-
-(defn test-all
-  []
-  (let [names ["test-lookup-ref-in"
-               "test-lookup-ref-transact"
-               "test-tuple-value-in"
-               "test-tuple-value-where"]]
-    (for [name names]
-      (do (println "Starting" name "...")
-          (Thread/sleep 3000)
-          ((ns-resolve *ns* (symbol name)))
-          (Thread/sleep 25)))))
