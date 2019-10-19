@@ -100,3 +100,44 @@
                    dt/touch)]
       (= ["foo" "bar"] (:a ent))
       (= 42 (:b ent)))))
+
+(deftest test-basic-pull-reaction
+  (testing "Basic pull returns entity reaction which updates on entity's transact"
+    (let [conn (dt/create-conn)
+          _ (d/posh! conn)
+          tran (d/transact! conn [{:a "foo" :b 42}])
+          eid (->> (d/q '[:find ?e
+                          :where [?e :a "foo"]] conn)
+                   deref
+                   ffirst)
+          entity-reaction (d/pull conn '[*] eid)]
+      (is (= (select-keys @entity-reaction [:a :b])
+             {:a "foo" :b 42}) "entity-reaction derefs to first transacted value")
+      (d/transact! conn [{:a "baz" :b 42}])
+      (is (= (select-keys @entity-reaction [:a :b])
+             {:a "foo" :b 42}) "entity-reaction contains correct value after unrelated tx")
+      (d/transact! conn [(assoc @entity-reaction :a "bar" :b 43)])
+      (is (= (select-keys @entity-reaction [:a :b])
+             {:a "bar" :b 43}) "entity-reaction derefs to later transacted value"))))
+
+(deftest test-pull-many
+  (testing "pull-many returns entity reaction which updates on any entity's transact"
+    (let [conn (dt/create-conn)
+          _ (d/posh! conn)
+          ents [{:a "foo" :b 42}
+                {:a "bar" :b 52}
+                {:a "baz" :b 62}]
+          tran (d/transact! conn ents)
+          eids (->> (d/q '[:find ?e
+                           :where [?e :a _]] conn)
+                    deref
+                    (reduce into [])
+                    reverse)
+          ;;dtlg-raw (dt/pull-many (dt/db conn) '[*] eids)
+          entity-reaction (d/pull-many conn '[*] eids)]
+      (is (= ents (map #(select-keys % [:a :b]) @entity-reaction))
+          "Entities in reaction should match input entities")
+      (let [updated-ents (vec (map #(update % :b inc) @entity-reaction))]
+        (d/transact! conn updated-ents)
+        (is (= updated-ents @entity-reaction)
+            "Entities in reaction should updated after transact")))))

@@ -92,31 +92,31 @@
    (if-let [r (get-in @posh-atom [:reactions storage-key])]
      r
      (->
-       (swap!
-         posh-atom
-         (fn [posh-atom-val]
-           (let [posh-atom-with-query (add-query-fn posh-atom-val)
-                 query-result         (:results (get (:cache posh-atom-with-query) storage-key))
-                 query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
-                                          ((:ratom dcfg) query-result))
-                 query-reaction       ((:make-reaction dcfg)
-                                        (fn []
-                                          ;;(println "RENDERING: " storage-key)
-                                          @query-ratom)
-                                        :on-dispose
-                                        (fn [_ _]
-                                          ;;(println "no DISPOSING: " storage-key)
-                                          (when-not (= (:cache options) :forever)
-                                            (swap! posh-atom
-                                                   (fn [posh-atom-val]
-                                                     (assoc (p/remove-item posh-atom-val storage-key)
-                                                       :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
-                                                       :reactions (dissoc (:reactions posh-atom-val) storage-key)))))))]
-             (assoc posh-atom-with-query
-               :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
-               :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction)))))
-       :reactions
-       (get storage-key))))
+      (swap!
+       posh-atom
+       (fn [posh-atom-val]
+         (let [posh-atom-with-query (add-query-fn posh-atom-val)
+               query-result         (:results (get (:cache posh-atom-with-query) storage-key))
+               query-ratom          (or (get (:ratoms posh-atom-with-query) storage-key)
+                                        ((:ratom dcfg) query-result))
+               query-reaction       ((:make-reaction dcfg)
+                                     (fn []
+                                       ;;(println "RENDERING: " storage-key)
+                                       @query-ratom)
+                                     :on-dispose
+                                     (fn [_ _]
+                                       ;;(println "no DISPOSING: " storage-key)
+                                       (when-not (= (:cache options) :forever)
+                                         (swap! posh-atom
+                                                (fn [posh-atom-val]
+                                                  (assoc (p/remove-item posh-atom-val storage-key)
+                                                         :ratoms (dissoc (:ratoms posh-atom-val) storage-key)
+                                                         :reactions (dissoc (:reactions posh-atom-val) storage-key)))))))]
+           (assoc posh-atom-with-query
+                  :ratoms (assoc (:ratoms posh-atom-with-query) storage-key query-ratom)
+                  :reactions (assoc (:reactions posh-atom-with-query) storage-key query-reaction)))))
+      :reactions
+      (get storage-key))))
   ([dcfg posh-atom storage-key add-query-fn]
    (make-query-reaction dcfg posh-atom storage-key add-query-fn {})))
 
@@ -142,6 +142,19 @@
     (dissoc
      (u/update-pull @posh-atom storage-key)
      :reload-fn)))
+
+(defn pull-many
+  ([dcfg poshdb pull-pattern eids options]
+   (let [true-poshdb (get-db dcfg poshdb)
+         storage-key [:pull-many true-poshdb pull-pattern eids]
+         posh-atom   (get-posh-atom dcfg poshdb)]
+     (make-query-reaction dcfg
+                          posh-atom
+                          storage-key
+                          #(p/add-pull-many % true-poshdb pull-pattern eids)
+                          options)))
+  ([dcfg poshdb pull-pattern eids]
+   (pull-many dcfg poshdb pull-pattern eids {})))
 
 (defn pull-tx [dcfg tx-patterns poshdb pull-pattern eid]
   (println "pull-tx is deprecated. Calling pull without your tx-patterns.")
@@ -242,6 +255,7 @@
        (def ~'pull                (partial posh.plugin-base/pull                ~dcfg))
        (def ~'pull-info           (partial posh.plugin-base/pull-info           ~dcfg))
        (def ~'pull-tx             (partial posh.plugin-base/pull-tx             ~dcfg))
+       (def ~'pull-many           (partial posh.plugin-base/pull-many           ~dcfg))
        (def ~'parse-q-query       (partial posh.plugin-base/parse-q-query       ~dcfg))
        (def ~'q-args-count        (partial posh.plugin-base/q-args-count        ~dcfg))
        (def ~'q                   (partial posh.plugin-base/q                   ~dcfg))
