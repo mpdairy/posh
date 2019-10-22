@@ -1,3 +1,4 @@
+## Now maintained here: https://github.com/denistakeda/posh
 # Posh
 
 Posh is a ClojureScript / React library that lets you use a single
