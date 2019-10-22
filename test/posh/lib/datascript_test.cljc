@@ -136,7 +136,7 @@
           ;;dtlg-raw (dt/pull-many (dt/db conn) '[*] eids)
           entity-reaction (d/pull-many conn '[*] eids)]
       (is (= ents (map #(select-keys % [:a :b]) @entity-reaction))
-          "Entities in reaction should match input entities")
+          "Entities in reaction should match input entities against input sequence of eids")
       (let [updated-ents (vec (map #(update % :b inc) @entity-reaction))]
         (d/transact! conn updated-ents)
         (is (= updated-ents @entity-reaction)
