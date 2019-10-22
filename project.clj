@@ -1,4 +1,4 @@
-(defproject org.clojars.questyarbrough/posh "0.5.8-SNAPSHOT"
+(defproject posh "0.5.7"
   :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
   :url "http://github.com/mpdairy/posh/"
   :license {:name "Eclipse Public License"
