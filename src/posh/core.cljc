@@ -90,15 +90,15 @@
   (let [storage-key [:filter-q query args]
         cached      (get cache storage-key)]
     (assoc
-        (if cached
+     (if cached
+       posh-tree
+       (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
+         (merge
           posh-tree
-          (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
-            (merge
-             posh-tree
-             {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
-              :cache (assoc cache storage-key
-                            (u/filter-q-transform-analysis analysis))})))
-      :return storage-key)))
+          {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
+           :cache (assoc cache storage-key
+                         (u/filter-q-transform-analysis analysis))})))
+     :return storage-key)))
 
 
 ;; ==================  queries ====================
@@ -107,28 +107,43 @@
   (let [storage-key [:pull poshdb pull-pattern eid]
         cached      (get cache storage-key)]
     (assoc
-        (if cached
+     (if cached
+       posh-tree
+       (let [analysis (merge
+                       {:tx-t 0}
+                       (u/update-pull posh-tree storage-key))]
+         (merge
           posh-tree
-          (let [analysis (merge
-                          {:tx-t 0}
-                          (u/update-pull posh-tree storage-key))]
-            (merge
-             posh-tree
-             {:graph (graph/add-item-connect graph storage-key [poshdb])
-              :cache (assoc cache storage-key analysis)})))
-      :return storage-key)))
+          {:graph (graph/add-item-connect graph storage-key [poshdb])
+           :cache (assoc cache storage-key analysis)})))
+     :return storage-key)))
+
+(defn add-pull-many [{:keys [graph cache dcfg conns conns-by-id retrieve] :as posh-tree} poshdb pull-pattern eids]
+  (let [storage-key [:pull-many poshdb pull-pattern eids]
+        cached      (get cache storage-key)]
+    (assoc
+     (if cached
+       posh-tree
+       (let [analysis (merge
+                       {:tx-t 0}
+                       (u/update-pull-many posh-tree storage-key))]
+         (merge
+          posh-tree
+          {:graph (graph/add-item-connect graph storage-key [poshdb])
+           :cache (assoc cache storage-key analysis)})))
+     :return storage-key)))
 
 (defn add-q [{:keys [cache graph dcfg conns retrieve] :as posh-tree} query & args]
   (let [storage-key [:q query args]
         cached      (get cache storage-key)]
     (assoc
-        (or cached
-            (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
-              (merge
-               posh-tree
-               {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
-                :cache (assoc cache storage-key analysis)})))
-      :return storage-key)))
+     (or cached
+         (let [{:keys [analysis dbvarmap]} (u/update-q-with-dbvarmap posh-tree storage-key)]
+           (merge
+            posh-tree
+            {:graph (graph/add-item-connect graph storage-key (vals dbvarmap))
+             :cache (assoc cache storage-key analysis)})))
+     :return storage-key)))
 
 ;; ======================= remove items ===================
 
@@ -229,5 +244,3 @@
                                  {}
                                  txs)]
     (after-transact (assoc posh-tree :txs {}) conns-results)))
-
-

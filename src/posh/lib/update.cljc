@@ -34,6 +34,20 @@
                :reload-fn posh.lib.update/update-filter-pull})
        :patterns :ref-patterns))))
 
+(defn update-pull-many [{:keys [dcfg retrieve] :as posh-tree} storage-key]
+  ;;(println "updated pull-many: " storage-key)
+  (let [[_ poshdb pull-pattern eids] storage-key]
+    (let [analysis (pa/pull-many-analyze dcfg
+                                         (cons :patterns retrieve)
+                                         (db/poshdb->analyze-db posh-tree poshdb)
+                                         pull-pattern
+                                         eids)]
+      (dissoc
+       (merge analysis
+              {:reload-patterns (:patterns analysis)
+               :reload-fn posh.lib.update/update-pull-many})
+       :patterns))))
+
 (declare update-q)
 
 (defn update-q-with-dbvarmap [{:keys [dcfg retrieve] :as posh-tree} storage-key]
@@ -86,4 +100,3 @@
     :pull (update-pull posh-tree storage-key)
     :q    (:analysis (update-q posh-tree storage-key))
     :filter-pull (update-filter-pull posh-tree storage-key)))
-
