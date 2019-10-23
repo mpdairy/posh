@@ -1,4 +1,8 @@
+[![Clojars Project](https://img.shields.io/clojars/v/denistakeda/posh.svg)](https://clojars.org/denistakeda/posh)
+
 # Posh
+
+## This is an official fork of [Posh](https://github.com/mpdairy/posh) library
 
 Posh is a ClojureScript / React library that lets you use a single
 [DataScript](https://github.com/tonsky/datascript/) database to store
@@ -39,8 +43,6 @@ database changed an attribute of the `person-id` entity:
 
 Posh chat room on Gitter: https://gitter.im/mpdairy/posh
 
-I am also currently looking for contract work or employment on a
-project that uses Posh.
 
 ### Examples:
 
@@ -60,7 +62,7 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 Start a Reagent project and include these dependencies:
 
 ```clj
-[posh "0.5.5"]
+[denistakeda/posh "0.5.7"]
 ```
 
 Require in Reagent app files:
