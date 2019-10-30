@@ -61,9 +61,8 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 
 Start a Reagent project and include these dependencies:
 
-```clj
-[denistakeda/posh "0.5.7"]
-```
+[![Clojars Project](https://clojars.org/denistakeda/posh/latest-version.svg)](https://clojars.org/denistakeda/posh)
+
 
 Require in Reagent app files:
 ```clj

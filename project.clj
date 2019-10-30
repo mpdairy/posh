@@ -1,6 +1,6 @@
-(defproject denistakeda/posh "0.5.7"
+(defproject denistakeda/posh "0.5.8"
   :description "Luxuriously easy and powerful Reagent / Datascript front-end framework"
-  :url "http://github.com/mpdairy/posh/"
+  :url "http://github.com/denistakeda/posh/"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.10.1" :scope "provided"]
@@ -9,7 +9,10 @@
                  #_[com.datomic/datomic-free "0.9.5407"]
                  [org.clojure/core.match "0.3.0"]]
   :plugins [[lein-cljsbuild "1.1.3"]]
-  :profiles {:test {:dependencies [[datascript "0.18.6"]]}}
+  :profiles {:test {:dependencies [[datascript "0.18.6"]
+                                   [reagent "0.9.0-rc2"]
+                                   [org.clojure/clojure "1.10.1"]
+                                   [org.clojure/clojurescript "1.10.520"]]}}
   :cljsbuild {:builds [ {:id "posh"
                          :source-paths ["src/"]
                          :figwheel false
