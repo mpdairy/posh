@@ -9,7 +9,10 @@
                  #_[com.datomic/datomic-free "0.9.5407"]
                  [org.clojure/core.match "0.3.0"]]
   :plugins [[lein-cljsbuild "1.1.3"]]
-  :profiles {:test {:dependencies [[datascript "0.18.6"]
+  :profiles {:dev {:plugins [[lein-githooks "0.1.0"]]
+                   :githooks {:auto-install true
+                              :pre-push ["lein kaocha"]}}
+             :test {:dependencies [[datascript "0.18.6"]
                                    [reagent "0.9.0-rc2"]
                                    [org.clojure/clojure "1.10.1"]
                                    [org.clojure/clojurescript "1.10.520"]]}
