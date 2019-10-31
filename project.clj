@@ -12,7 +12,15 @@
   :profiles {:test {:dependencies [[datascript "0.18.6"]
                                    [reagent "0.9.0-rc2"]
                                    [org.clojure/clojure "1.10.1"]
-                                   [org.clojure/clojurescript "1.10.520"]]}}
+                                   [org.clojure/clojurescript "1.10.520"]]}
+             :kaocha {:dependencies [[lambdaisland/kaocha "0.0-554"]
+                                     [datascript "0.18.6"]
+                                     [com.datomic/datomic-free "0.9.5407"]
+                                     [reagent "0.9.0-rc2"]
+                                     [org.clojure/clojure "1.10.1"]
+                                     [org.clojure/clojurescript "1.10.520"]
+                                     [org.clojure/test.check "0.9.0"]
+                                     ]}}
   :cljsbuild {:builds [ {:id "posh"
                          :source-paths ["src/"]
                          :figwheel false
@@ -21,4 +29,5 @@
                                     :output-to "resources/public/js/main.js"
                                     :output-dir "resources/public/js"} } ]}
   :scm {:name "git"
-        :url "https://github.com/denistakeda/posh"})
+        :url "https://github.com/denistakeda/posh"}
+  :aliases {"kaocha" ["with-profile" "+kaocha" "run" "-m" "kaocha.runner"]})

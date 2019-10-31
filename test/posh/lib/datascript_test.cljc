@@ -83,8 +83,8 @@
                    ffirst
                    (dt/entity (dt/db conn))
                    dt/touch)]
-      (= ["foo" "bar"] (:a ent))
-      (= 42 (:b ent)))))
+      (is (= ["foo" "bar"] (:a ent)))
+      (is (= 42 (:b ent))))))
 
 (deftest test-tuple-value-where
   (testing "Query for tuple values works in :where clause"
@@ -98,8 +98,8 @@
                    ffirst
                    (dt/entity (dt/db conn))
                    dt/touch)]
-      (= ["foo" "bar"] (:a ent))
-      (= 42 (:b ent)))))
+      (is (= ["foo" "bar"] (:a ent)))
+      (is (= 42 (:b ent))))))
 
 (deftest test-basic-pull-reaction
   (testing "Basic pull returns entity reaction which updates on entity's transact"

@@ -384,11 +384,11 @@ Files of interest:
 
 ### Running tests
 
-Run `lein test` from project root
+Run `lein kaocha` from project root
 
 ## License
 
-Copyright © 2015 Matt Parker
+Copyright © 2019 Denis Krivosheev
 
 If somebody needs to BSD then sure, it's under that too.
 Distributed under the Eclipse Public License either version 1.0 or (at
