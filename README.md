@@ -28,7 +28,7 @@ For example, below is a component that displays a list of a person's age, name,
 and weight. The component will only re-render when something in the
 database changed an attribute of the `person-id` entity:
 
-```
+```clj
 (defn person [conn person-id]
   (let [p @(pull conn '[*] person-id)]
     [:ul
@@ -36,6 +36,18 @@ database changed an attribute of the `person-id` entity:
      [:li (:person/age p)]
      [:li (:person/weight p)]]))
 ```
+
+The same example by using rum:
+
+```clj
+(rum/defc person < rum/reactive [conn person-id]
+  (let [p (rum/react (pull conn '[*] person-id))]
+    [:ul
+      [:li (:person/name p)]
+      [:li (:person/age p)]
+      [:li (:person/weight p)]]))
+```
+
 ## Resources
 
 Posh chat room on Gitter: https://gitter.im/mpdairy/posh
