@@ -1,5 +1,8 @@
-## Now maintained here: https://github.com/denistakeda/posh
+[![Clojars Project](https://img.shields.io/clojars/v/denistakeda/posh.svg)](https://clojars.org/denistakeda/posh)
+
 # Posh
+
+## This is an official fork of [Posh](https://github.com/mpdairy/posh) library
 
 Posh is a ClojureScript / React library that lets you use a single
 [DataScript](https://github.com/tonsky/datascript/) database to store
@@ -52,8 +55,6 @@ The same example by using rum:
 
 Posh chat room on Gitter: https://gitter.im/mpdairy/posh
 
-I am also currently looking for contract work or employment on a
-project that uses Posh.
 
 ### Examples:
 
@@ -72,9 +73,8 @@ buttons ([trashy live demo](http://otherway.org/posh-todo/)).
 
 Start a Reagent project and include these dependencies:
 
-```clj
-[posh "0.5.5"]
-```
+[![Clojars Project](https://clojars.org/denistakeda/posh/latest-version.svg)](https://clojars.org/denistakeda/posh)
+
 
 Require in Reagent app files:
 ```clj
@@ -396,11 +396,11 @@ Files of interest:
 
 ### Running tests
 
-Run `lein test` from project root
+Run `lein kaocha` from project root
 
 ## License
 
-Copyright © 2015 Matt Parker
+Copyright © 2019 Denis Krivosheev
 
 If somebody needs to BSD then sure, it's under that too.
 Distributed under the Eclipse Public License either version 1.0 or (at

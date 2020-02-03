@@ -1,5 +1,6 @@
 (ns posh.reagent
-  (:require [posh.plugin-base :as base :include-macros true]
+  (:require #?(:clj  [posh.plugin-base :as base]
+               :cljs [posh.plugin-base :as base :include-macros true])
             [datascript.core :as d]
             [reagent.core :as r]
             [reagent.ratom :as ra]))
@@ -20,9 +21,10 @@
               :transact!     d/transact!
               :listen!       d/listen!
               :conn?         d/conn?
-              :ratom         r/atom
-              :react         deref
-              :derive-reaction derive-reaction}]
+              :ratom         #?(:clj  nil
+                                :cljs r/atom)
+              :derive-reaction #?(:clj  nil
+                                :cljs derive-reaction)}]
     (assoc dcfg :pull (partial base/safe-pull dcfg))))
 
 (base/add-plugin dcfg)

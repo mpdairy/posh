@@ -1,0 +1,3 @@
+#kaocha/v1
+{:tests [{:kaocha.testable/type :kaocha.type/clojure.test
+          :kaocha.testable/id   :unit}]}
