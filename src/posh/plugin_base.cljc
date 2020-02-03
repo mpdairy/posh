@@ -268,10 +268,10 @@
 
        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-          (def ~'filter-tx           (partial posh.plugin-base/filter-tx           ~dcfg))
-          (def ~'filter-pull         (partial posh.plugin-base/filter-pull         ~dcfg))
-          (def ~'filter-q            (partial posh.plugin-base/filter-q            ~dcfg))
+       (def ~'filter-tx           (partial posh.plugin-base/filter-tx           ~dcfg))
+       (def ~'filter-pull         (partial posh.plugin-base/filter-pull         ~dcfg))
+       (def ~'filter-q            (partial posh.plugin-base/filter-q            ~dcfg))
 
        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-          (def ~'transact!           (partial posh.plugin-base/transact!           ~dcfg)))))
+       (def ~'transact!           (partial posh.plugin-base/transact!           ~dcfg)))))
