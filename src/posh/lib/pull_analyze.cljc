@@ -184,14 +184,14 @@
               {:patterns
                {db-id
                 (dm/reduce-patterns
-                  (concat
-                    (when (vector? ent-id)
-                      [['_ (first ent-id) (second ent-id)]])
-                    (tx-pattern-for-pull
-                     schema
-                     prepped-pull-pattern
-                     affected-datoms
-                     false)))}})
+                 (concat
+                  (when (vector? ent-id)
+                    [['_ (first ent-id) (second ent-id)]])
+                  (tx-pattern-for-pull
+                   schema
+                   prepped-pull-pattern
+                   affected-datoms
+                   false)))}})
             (when (some #{:ref-patterns} retrieve)
               {:ref-patterns
                {db-id
@@ -201,19 +201,17 @@
                   prepped-pull-pattern
                   affected-datoms
                   true))}}))))))))
- 
+
 (defn pull-many-analyze [dcfg retrieve {:keys [db schema db-id]} pull-pattern ent-ids]
   (when-not (empty? retrieve)
     (let [resolved-ent-ids (map #((:entid dcfg) db %) ent-ids)
-          affected-datoms
-          (map (fn [ent-id] (pull-affected-datoms (:pull dcfg) db pull-pattern ent-id))
-               resolved-ent-ids)]
+          affected-datoms (pull-affected-datoms (:pull-many dcfg) db pull-pattern ent-ids)]
       (merge
        (when (some #{:results} retrieve)
          {:results affected-datoms})
        (when (some #{:datoms :datoms-t} retrieve)
          (let [datoms (mapcat #(generate-affected-tx-datoms-for-pull schema %)
-                           affected-datoms)]
+                              affected-datoms)]
            (merge
             (when (some #{:datoms} retrieve)
               {:datoms {db-id datoms}})
@@ -233,5 +231,3 @@
               (vec (cons (set resolved-ent-ids) (rest (ffirst patterns))))
               (mapcat rest patterns))
              (dm/reduce-patterns (apply concat patterns)))}})))))
-
-
