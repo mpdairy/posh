@@ -1,6 +1,7 @@
 (ns posh.lib.pull-analyze
   (:require [posh.lib.util :as util]
-            [posh.lib.datom-matcher :as dm]))
+            [posh.lib.datom-matcher :as dm]
+            [clojure.walk]))
 
 (defn reverse-lookup? [attr]
   (= (first (name attr)) '\_))
