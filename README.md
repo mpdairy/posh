@@ -1,6 +1,8 @@
 ## Now maintained here: https://github.com/denistakeda/posh
 # Posh
 
+[![Join the chat at https://gitter.im/mpdairy/posh](https://badges.gitter.im/mpdairy/posh.svg)](https://gitter.im/mpdairy/posh?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 Posh is a ClojureScript / React library that lets you use a single
 [DataScript](https://github.com/tonsky/datascript/) database to store
 your app state. Components access the
